@@ -12,7 +12,7 @@ Reference source: PRD "Proposal Intake Fields" + reference Google Form (`https:/
 | `client_email` | `Client Email` | Client Email | Used for delivery (Q16) — distinct from the respondent `Email Address` above. |
 | `company_name` | `Company Name` | Company Name | |
 | `date_of_call` | `Date Of Call` | Date of Call | Sheet header differs in casing/spacing from PRD's suggested key — n8n mapping must normalize this. |
-| `salesperson_name` | `Salesperson Name` | Salesperson Name | Free text; see decisions #20 for the attribution risk. |
+| `salesperson_name` | `Salesperson Name` | Salesperson Name | **Optional** — free text when present, `NULL`/unassigned when the client filled the form directly or left it blank (decisions #20, resolved 2026-09-09). Never string-match this to a `User`. |
 | `client_needs_summary` | `Summary of Client's Needs` | Summary of Client's Needs | |
 | `project_scope` | `Project Scope` | Project Scope | |
 | `goals_and_objectives` | `Goals & Objectives` | Goals and Objectives | Sheet uses `&`, PRD table says "and" — cosmetic but must be handled explicitly in the n8n mapping, not assumed. |
@@ -37,26 +37,28 @@ Everything else in the template (`{{client_name}}`, `{{company_name}}`, `{{date_
 
 ## Proposal sections (from the reference template)
 
-Informs decisions #8 — six sections, fixed order:
+Informs decisions #8 — six sections, fixed order. Reference template now on disk at `docs/reference/proposal-template.md` — read it before touching generation prompts, since it settles exactly which sections are generated vs. pinned-only (Introduction has **no** generated placeholder at all, unlike what an earlier draft of this doc assumed):
 
-1. Introduction
+1. Introduction (pinned only — boilerplate wraps `client_needs_summary` + `goals_and_objectives` verbatim; assembled at intake, never calls Claude)
 2. Proposed Solution (contains `project_scope` verbatim + generated `recommended_approach`)
 3. Deliverables (generated from `recommended_services`)
 4. Timeline (`proposed_timeline` verbatim)
 5. Pricing (`estimated_pricing` verbatim)
-6. Next Steps (static boilerplate — likely doesn't need per-proposal generation at all)
+6. Next Steps (static boilerplate — no per-proposal generation)
+
+Only **Proposed Solution** and **Deliverables** ever call Claude (`GENERATED_SECTION_KEYS` in `backend/app/domain/generation.py`).
 
 ## Generated-section length targets
 
-No reference doc with an expected average proposal/email length exists in this repo yet (no PRD, no email sample on disk). The targets below are set against the fixed 6-section template and the assumption that a client skim-reads a proposal — set them as prompt guidance and a visible word-count check in the UI, not hard schema caps. Revisit when a real reference (PRD / email sample) lands.
+Set against `docs/reference/proposal-template.md` and `docs/reference/client-email-template.md` — both are notably short (each section is one to two sentences of boilerplate around a pinned fact; the whole email is ~10 lines). There is no "few paragraphs per section" target — that was an earlier assumption before the reference docs existed, and it's why an earlier version of Phase 2 produced sections several times longer than intended (see `docs/edge-cases.md`). Targets below are prompt guidance (`WORD_TARGETS` in `backend/app/domain/generation.py`) plus a visible word-count check in the UI, not hard schema caps.
 
 | Section | Target length | Notes |
 |---|---|---|
-| Introduction | ~80–150 words | One short paragraph: who you are, why you're writing, what you understood the client wants. No fluff. |
-| Proposed Solution | ~200–400 words | The meat — what you'll do, why it fits their stated needs, what's in scope. `project_scope` verbatim goes in here; the generated `recommended_approach` stays a tight narrative, not a brainstorm dump. |
-| Deliverables | ~100–250 words | Short bulleted list with 1–2 line descriptions each. `recommended_services` expanded/formatted here — if it's already a clean list, generation just formats it, it doesn't inflate it. |
-| Timeline | ~80–150 words | Phases + dates from `proposed_timeline` verbatim. Table or short list, not prose. |
-| Pricing | ~60–120 words | `estimated_pricing` verbatim, plus a one-line note on what's included/excluded if the intake carries that. No padding. |
-| Next Steps | ~40–80 words | Static boilerplate, call-to-action. Shortest section. |
+| Introduction | n/a — not generated | Pure boilerplate + verbatim facts, assembled at intake. No word target needed since nothing is free-generated. |
+| Proposed Solution | 120–200 words (generated portion only) | `project_scope` verbatim goes in above this; the generated `recommended_approach` is 1-2 tight paragraphs, not a brainstorm dump. |
+| Deliverables | 60–120 words | Short list, one line per deliverable. `recommended_services` expanded/formatted here — if it's already a clean list, generation just formats it, it doesn't inflate it. |
+| Timeline | n/a — not generated | `proposed_timeline` verbatim, no generation. |
+| Pricing | n/a — not generated | `estimated_pricing` verbatim, no generation. |
+| Next Steps | n/a — not generated | Static boilerplate. |
 
-Practical check: if a section comes back well over its target (e.g. 900 words), the regenerate instruction can be "shorten to ~250 words, keep all facts" — cheaper than editing a wall of text by hand. The UI word-count badge makes the over-length sections visible at a glance so the salesperson knows where to spend edit time.
+Practical check: if a section comes back well over its target, the regenerate instruction can be "shorten to ~150 words, keep all facts" — cheaper than editing a wall of text by hand. The UI word-count badge (still open, see `docs/edge-cases.md`) makes the over-length sections visible at a glance so the salesperson knows where to spend edit time.
