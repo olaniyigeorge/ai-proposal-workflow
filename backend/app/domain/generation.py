@@ -3,37 +3,54 @@ Full-proposal generation — assembling what Claude needs to write the sections
 that are not pure pinned-fact passthroughs. Pure domain logic: no I/O, no
 anthropic import (that lives in adapters/claude_client.py).
 
-Per docs/intake-schema.md's "Proposal sections" list, only three of the six
-template sections require an actual generation call — the rest are canonical
-facts reproduced verbatim by intake_service.py at intake time and are never
-touched here:
+Per `docs/reference/proposal-template.md` (the actual reference template —
+see `docs/intake-schema.md` "Proposal sections"), only **two** of the six
+template sections require an actual generation call. Introduction is fixed
+boilerplate wrapping two pinned facts verbatim — the template has no
+generated placeholder in it at all — so intake_service.py assembles it
+directly at intake time, same as Timeline/Pricing/Next Steps:
 
-  1. Introduction          — fully generated (no pinned field maps to it)
+  1. Introduction          — pinned only, assembled at intake (no Claude call)
   2. Proposed Solution     — `project_scope` verbatim + generated `recommended_approach`
   3. Deliverables          — generated from `recommended_services`
   4. Timeline              — pinned verbatim (no generation)
   5. Pricing               — pinned verbatim (no generation)
   6. Next Steps            — static boilerplate (no generation)
+
+Word-count targets below are read directly off the reference template's own
+prose (each templated section is a sentence or two of boilerplate around the
+pinned/generated content) — see `docs/intake-schema.md` "Generated-section
+length targets" for the full rationale and the business cost of over-length
+sections (edge case: "Generated sections run long; client skim reading
+suffers").
 """
 
 from app.models.proposal import Proposal, SectionKey
 
 # Sections a full-generation job must call Claude for. Every other SectionKey
-# keeps the template_default content intake_service.py already wrote.
+# keeps the template_default content intake_service.py already wrote —
+# Introduction included, now that it's pinned-only (no free generation).
 GENERATED_SECTION_KEYS: frozenset[SectionKey] = frozenset(
-    {SectionKey.INTRODUCTION, SectionKey.PROPOSED_SOLUTION, SectionKey.DELIVERABLES}
+    {SectionKey.PROPOSED_SOLUTION, SectionKey.DELIVERABLES}
 )
+
+# Word targets per generated section — deliberately tight, matching the
+# reference template's own brevity (a client skims a proposal; padding costs
+# edit time later, not less). Passed into the prompt as explicit guidance.
+WORD_TARGETS: dict[SectionKey, str] = {
+    SectionKey.PROPOSED_SOLUTION: "120-200 words",
+    SectionKey.DELIVERABLES: "60-120 words",
+}
 
 # Fixed house tone derived from the reference proposal template (CLAUDE.md /
 # architecture.md §4 point 2). Stored once, layered under any future per-call
 # salesperson instruction for regeneration — never replaced by it.
 HOUSE_TONE = (
-    "Confident, professional, and client-focused sales writing. Clear and "
-    "concrete rather than generic — reference the client's actual stated "
-    "needs and goals rather than boilerplate phrasing. Warm but not casual; "
-    "no exclamation points, no marketing hyperbole, no emoji. Write in "
-    "complete paragraphs, not bullet lists, unless the section is explicitly "
-    "a list."
+    "Confident, professional, and client-focused sales writing. Clear, "
+    "concrete, and brief — the client skim-reads this, so favor short "
+    "sentences over qualifying clauses. No exclamation points, no marketing "
+    "hyperbole, no emoji. Never pad to sound thorough; a short, precise "
+    "section beats a long generic one."
 )
 
 
@@ -67,28 +84,32 @@ def build_system_prompt() -> str:
         "- Never restate pricing, dates, or the client/company name as your "
         "own paraphrase if a pinned section elsewhere already states them "
         "verbatim — focus on the narrative this section is asked for.\n"
+        "- Stay within the word target given for this section. Going over "
+        "it is treated as a failure to follow instructions, not thoroughness "
+        "— the client skim-reads this, and a salesperson has to manually "
+        "trim anything over target before it can go out.\n"
         "- Output only the section's prose. No heading, no markdown, no "
         "preamble like \"Here is the section\".\n"
     )
 
 
 def build_user_prompt(proposal: Proposal, section_key: SectionKey) -> str:
-    facts = _canonical_facts_block(proposal)
-
-    if section_key == SectionKey.INTRODUCTION:
-        task = (
-            "Write the Introduction section of the proposal. Open the "
-            "document, thank the client for the discovery call, and briefly "
-            "frame the engagement in terms of their stated needs and goals. "
-            "2-3 short paragraphs."
+    if section_key not in GENERATED_SECTION_KEYS:
+        raise ValueError(
+            f"build_user_prompt called for a non-generated section: {section_key.value}"
         )
-    elif section_key == SectionKey.PROPOSED_SOLUTION:
+
+    facts = _canonical_facts_block(proposal)
+    word_target = WORD_TARGETS[section_key]
+
+    if section_key == SectionKey.PROPOSED_SOLUTION:
         task = (
             "Write the 'recommended approach' narrative for the Proposed "
             "Solution section — do not restate the project scope verbatim "
             "(it is shown to you for context only and is inserted separately "
-            "above your text). Explain, in 2-3 paragraphs, the approach "
-            "recommended to address the project scope and goals given."
+            "above your text). Explain, in 1-2 tight paragraphs, the "
+            f"approach recommended to address the project scope and goals "
+            f"given. Target length: {word_target}."
         )
     elif section_key == SectionKey.DELIVERABLES:
         task = (
@@ -96,7 +117,8 @@ def build_user_prompt(proposal: Proposal, section_key: SectionKey) -> str:
             "recommended services above fold services and deliverables "
             "together — separate and expand them into a clear list of "
             "concrete deliverables the client will receive, one per line, "
-            "as short phrases (not full sentences)."
+            f"as short phrases (not full sentences). Target length: "
+            f"{word_target}."
         )
     else:
         raise ValueError(
@@ -110,7 +132,7 @@ def assemble_section_content(section_key: SectionKey, pinned_content: str, gener
     """Combine a section's pinned/verbatim prefix (if any) with Claude's
     generated text. Only PROPOSED_SOLUTION has a pinned prefix (`project_scope`
     verbatim) that must survive alongside the generated `recommended_approach`
-    — introduction and deliverables are pure generated content.
+    — deliverables is pure generated content.
     """
     generated_text = generated_text.strip()
     if section_key == SectionKey.PROPOSED_SOLUTION:
