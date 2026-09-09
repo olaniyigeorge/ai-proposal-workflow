@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr
 
@@ -28,7 +28,7 @@ class ProposalSummaryResponse(BaseModel):
     client_name: str
     client_email: EmailStr
     company_name: str
-    salesperson_name: str
+    salesperson_name: Optional[str]
     created_at: datetime
     updated_at: datetime
 
@@ -41,7 +41,7 @@ class ProposalDetailResponse(BaseModel):
     client_name: str
     client_email: EmailStr
     company_name: str
-    salesperson_name: str
+    salesperson_name: Optional[str]
     date_of_call: str
     client_needs_summary: str
     project_scope: str
