@@ -67,7 +67,11 @@ class Proposal(Base, TimestampMixin):
     client_name: Mapped[str] = mapped_column(String(255), nullable=False)
     client_email: Mapped[str] = mapped_column(String(255), nullable=False)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    salesperson_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nullable: the client may fill the intake form directly with no
+    # salesperson on the call at all (docs/decisions.md #20). A NULL here
+    # means "unassigned" — picked up via a manual claim/assign step, never
+    # guessed at by string-matching this field.
+    salesperson_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     date_of_call: Mapped[str] = mapped_column(String(100), nullable=False)
     client_needs_summary: Mapped[str] = mapped_column(Text, nullable=False)
     project_scope: Mapped[str] = mapped_column(Text, nullable=False)
