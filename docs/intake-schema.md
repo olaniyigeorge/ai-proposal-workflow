@@ -48,15 +48,17 @@ Informs decisions #8 — six sections, fixed order:
 
 ## Generated-section length targets
 
-No reference doc with an expected average proposal/email length exists in this repo yet (no PRD, no email sample on disk). The targets below are set against the fixed 6-section template and the assumption that a client skim-reads a proposal — set them as prompt guidance and a visible word-count check in the UI, not hard schema caps. Revisit when a real reference (PRD / email sample) lands.
+Reference: `docs/reference/proposal-template.md` — the real template frame is short (~230 words of frame text total, excluding pinned intake fields and static Next Steps boilerplate). Of the 6 sections, only `recommended_approach` (in Proposed Solution) and `deliverables` (in Deliverables) are AI-generated; the rest is either pinned verbatim from intake or static boilerplate. Targets below are set against that template, as prompt guidance + a visible word-count badge in the UI — not hard schema caps. Revisit if the template changes.
 
 | Section | Target length | Notes |
 |---|---|---|
-| Introduction | ~80–150 words | One short paragraph: who you are, why you're writing, what you understood the client wants. No fluff. |
-| Proposed Solution | ~200–400 words | The meat — what you'll do, why it fits their stated needs, what's in scope. `project_scope` verbatim goes in here; the generated `recommended_approach` stays a tight narrative, not a brainstorm dump. |
-| Deliverables | ~100–250 words | Short bulleted list with 1–2 line descriptions each. `recommended_services` expanded/formatted here — if it's already a clean list, generation just formats it, it doesn't inflate it. |
-| Timeline | ~80–150 words | Phases + dates from `proposed_timeline` verbatim. Table or short list, not prose. |
-| Pricing | ~60–120 words | `estimated_pricing` verbatim, plus a one-line note on what's included/excluded if the intake carries that. No padding. |
-| Next Steps | ~40–80 words | Static boilerplate, call-to-action. Shortest section. |
+| Introduction | ~40–120 words | Template frame is ~45 words ("Thank you... address the following needs... believe this solution will help"). `client_needs_summary` and `goals_and_objectives` are pinned verbatim and dominate length — generation adds only the framing sentences. Keep it one short paragraph. |
+| Proposed Solution | ~120–300 words | `project_scope` is pinned verbatim (~40 words of frame + the scope text). The generated `recommended_approach` is the part that must stay tight — target ~120–220 words for that generated piece (one focused paragraph, a second only if genuinely complex). Total section length depends mostly on how long `project_scope` is from intake. |
+| Deliverables | ~80–220 words | Template frame is one line ("You can expect the following key deliverables:"). The generated `deliverables` list is the content — 3–8 bullet items, 1–2 lines each. If `recommended_services` is already a clean list, generation just formats it, it doesn't inflate it. |
+| Timeline | ~30–120 words | `proposed_timeline` pinned verbatim; ~25 words of frame around it. Short list or phases + dates, not prose. Length depends on the intake answer. |
+| Pricing | ~25–80 words | `estimated_pricing` pinned verbatim; ~30 words of frame. Keep the frame to one short paragraph. |
+| Next Steps | ~40–70 words | Static boilerplate — likely doesn't need per-proposal generation at all. "If you are happy with this proposal, we will send over an agreement..." + sign-off. |
 
-Practical check: if a section comes back well over its target (e.g. 900 words), the regenerate instruction can be "shorten to ~250 words, keep all facts" — cheaper than editing a wall of text by hand. The UI word-count badge makes the over-length sections visible at a glance so the salesperson knows where to spend edit time.
+Total proposal frame (excluding intake field lengths): ~230 words of template frame + two generated fields (`recommended_approach` + `deliverables`). A full proposal is typically 400–800 words total depending on how long the form answers are. The AI-generated *added* content is only `recommended_approach` and `deliverables` — if those run to 900 words, that's class-pleating, not thoroughness.
+
+Practical check: if a generated piece comes back well over target, the regenerate instruction can be "shorten to ~180 words, keep all facts" — cheaper than editing a wall of text by hand. The UI word-count badge makes over-length generated sections visible at a glance so the salesperson knows where to spend edit time.
