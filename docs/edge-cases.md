@@ -20,7 +20,55 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
-## Template for new entries
+## 2026-09-09 — Generated sections run long; client skim reading suffers
+
+**The gap (business view):** A proposal that reads like a white paper gets skimmed and set aside. Long AI sections look thorough but bury the client's actual problem and your answer in padding. The salesperson then spends edit time cutting, not improving — negating the time save Phase 2 was supposed to deliver. No length target exists in the schema or prompt today.
+
+**The fix (proposed):** Set target word ranges per section (see `intake-schema.md` §"Generated-section length targets") and feed them into the generation prompt as guidance, not hard caps — "Introduction: ~100 words, one paragraph." Add a visible word-count badge next to each section in the UI so the salesperson sees at a glance which sections need trimming. Cap regeneration at 3 (already decided #13) so "shorten" instructions don't infinite-loop.
+
+**Where it lives:** generation prompt (Phase 2 service), UI word-count badge (Phase 3/4 SectionEditor), regenerate instruction prefill suggestions (Phase 4). No schema change.
+
+**Open follow-up:** if Claude consistently exceeds the targets for a given section type, the prompt needs tuning per section — treat as prompt-iteration work, not a code bug.
+
+---
+
+## 2026-09-09 — Email sent without a human reviewing the draft
+
+**The gap (business view):** If "send" fires automatically from DOCUMENT_READY or APPROVED, a wrong recipient, a stale link, a generic email body, or a pricing error in the body goes out before anyone sees it. For a proposal that's a sales document, a bad send is a lost opportunity or a damaged first impression — higher cost than a delayed send.
+
+**The fix (proposed):** Email draft is composed (storage link embedded) but not sent until the salesperson reviews and confirms it in the UI. The send button is disabled until the draft is reviewed. Delivery status (sent/bounced/failed) tracked in DeliveryRecord as already planned (decisions #17). This is a Phase 7 change: the "review email draft" step sits between DOCUMENT_READY and DELIVERING. See `decisions.md` #16 follow-up.
+
+**Where it lives:** Phase 7 delivery service + UI (email draft review component). Storage: Supabase Storage default; link embedded in email body, not attachment.
+
+**Open follow-up:** confirm whether the email body is templated (house tone, project-specific merge fields) or fully free-form per send. Templated + editable is the sweet spot — a starting draft the salesperson tweaks, not a blank box and not a locked text.
+
+---
+
+## 2026-09-09 — Human edits lost when a section is regenerated without warning
+
+**The gap (business view):** A salesperson spends 10 minutes tightening a section's wording, then hits regenerate (or a background job does), and the edit vanishes — the section goes back to the AI version. The time spent editing is wasted and the salesperson loses trust in the edit feature. This is the highest-friction failure mode in the review flow because it punishes the exact action (editing) that's supposed to be the value add.
+
+**The fix (proposed):** content_origin tracking (already in schema: `human_edited`, `human_edited_after_generation`) gates regeneration. Regenerating a `human_edited` section requires explicit confirmation in the UI ("this section has manual edits — regenerate will replace them"). The 3-attempt cap (decisions #13) limits how often this can happen per section. Sibling sections must not be touched by a single-section regenerate (CLAUDE.md constraint) — that protects the rest of the proposal from collateral damage.
+
+**Where it lives:** already partially in schema + transition rules; the UI confirmation dialog is the missing piece in Phase 4 (RegenerateSectionButton).
+
+**Open follow-up:** confirm whether regenerating a human-edited section should auto-set content_origin back to `ai_generated` or to `human_edited_after_generation` — the latter preserves the record that a human touched it before the regenerate, which is useful for audit. Current enum has both; pick one and document it.
+
+---
+
+## 2026-09-09 — Salesperson attribution breaks when the client fills the form
+
+**The gap (business view):** The Google Form can be filled by the salesperson OR the client. `salesperson_name` is free text — if the client types their own name or a different spelling, string-matching it to a `User` account misassigns the proposal or leaves it unassigned. The wrong salesperson (or nobody) ends up reviewing a proposal that's sitting in the queue, delaying it.
+
+**The fix (proposed):** Defer to a manual "claim/assign" step in the review queue as the default fallback (decisions #20, open). Until resolved, a proposal with an unrecognised `salesperson_name` shows as "unassigned" in the list with a claim action, rather than being silently misassigned. Phase 3 doesn't need this yet (no mutation endpoints), but any ownership-gated action after Phase 3 needs it.
+
+**Where it lives:** decisions.md #20 (open), future claim/assign UI + service. No schema change needed yet — `salesperson_name` stays free text; a separate `assigned_to` FK to `users` (when that table exists) is the likely resolved shape.
+
+**Open follow-up:** confirm the User table exists / is planned before Phase 5 (approval needs an actor). If Supabase Auth users are the actor model, the `User` entity may not need a separate table — confirm before adding one.
+
+---
+
+## YYYY-MM-DD — Short title
 
 ```
 ## YYYY-MM-DD — Short title
