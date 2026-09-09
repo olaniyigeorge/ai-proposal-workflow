@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     # Claude API (section generation/regeneration)
     ANTHROPIC_API_KEY: str = ""
     CLAUDE_MODEL: str = "claude-sonnet-5"
-    CLAUDE_MAX_TOKENS: int = 2048
+    # ~200 word target sections need well under this; headroom for a
+    # slightly-over-target response without truncating mid-sentence.
+    CLAUDE_MAX_TOKENS: int = 500
 
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
