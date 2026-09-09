@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # Intake Webhook
     WEBHOOK_SECRET: str = "dev-webhook-secret"
 
+    # Claude API (section generation/regeneration)
+    ANTHROPIC_API_KEY: str = ""
+    CLAUDE_MODEL: str = "claude-sonnet-5"
+    CLAUDE_MAX_TOKENS: int = 2048
+
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
