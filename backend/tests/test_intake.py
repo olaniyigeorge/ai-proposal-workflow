@@ -107,7 +107,7 @@ async def test_intake_creates_proposal_and_sections(
 
 @pytest.mark.asyncio
 async def test_intake_idempotency_duplicate(async_client: AsyncClient) -> None:
-    """Submitting the exact same (timestamp, respondent_email) returns 200 with the existing proposal."""
+    """Submitting the exact same payload twice returns 200 with the existing proposal."""
     headers = {"X-Webhook-Secret": "dev-webhook-secret"}
     payload = SAMPLE_PAYLOAD.copy()
     payload["timestamp"] = "2026-09-09 12:00:00"
@@ -120,13 +120,71 @@ async def test_intake_idempotency_duplicate(async_client: AsyncClient) -> None:
     assert data1["status"] == "created"
     prop_id = data1["proposal_id"]
 
-    # Second attempt with identical timestamp + email: returns existing
+    # Second attempt with identical payload: returns existing
     resp2 = await async_client.post("/api/v1/intake", json=payload, headers=headers)
     assert resp2.status_code == 200
     data2 = resp2.json()
     assert data2["status"] == "existing"
     assert data2["proposal_id"] == prop_id
     assert "already processed" in data2["message"]
+
+
+@pytest.mark.asyncio
+async def test_intake_idempotency_survives_resubmission_with_new_timestamp(
+    async_client: AsyncClient,
+) -> None:
+    """A salesperson resubmitting the same form (new Google Forms Timestamp, same
+    company/project_scope/email) must dedupe — not just retries with an identical
+    timestamp. This is the gap the timestamp+email key had before it was revised
+    (see docs/decisions.md #4)."""
+    headers = {"X-Webhook-Secret": "dev-webhook-secret"}
+    payload = SAMPLE_PAYLOAD.copy()
+    payload["timestamp"] = "2026-09-09 13:00:00"
+    payload["respondent_email"] = "rep3@example.com"
+
+    resp1 = await async_client.post("/api/v1/intake", json=payload, headers=headers)
+    assert resp1.status_code == 201
+    prop_id = resp1.json()["proposal_id"]
+
+    resubmission = payload.copy()
+    resubmission["timestamp"] = "2026-09-09 13:05:12"  # different timestamp, same content
+
+    resp2 = await async_client.post(
+        "/api/v1/intake", json=resubmission, headers=headers
+    )
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["status"] == "existing"
+    assert data2["proposal_id"] == prop_id
+
+
+@pytest.mark.asyncio
+async def test_intake_idempotency_ignores_cosmetic_differences(
+    async_client: AsyncClient,
+) -> None:
+    """Extra whitespace/casing/trailing punctuation in company_name or project_scope
+    must not fork the idempotency key."""
+    headers = {"X-Webhook-Secret": "dev-webhook-secret"}
+    payload = SAMPLE_PAYLOAD.copy()
+    payload["timestamp"] = "2026-09-09 14:00:00"
+    payload["respondent_email"] = "rep4@example.com"
+
+    resp1 = await async_client.post("/api/v1/intake", json=payload, headers=headers)
+    assert resp1.status_code == 201
+    prop_id = resp1.json()["proposal_id"]
+
+    cosmetic_variant = payload.copy()
+    cosmetic_variant["timestamp"] = "2026-09-09 14:10:00"
+    cosmetic_variant["company_name"] = "  ACME corp.  "
+    cosmetic_variant["project_scope"] = (
+        "Design  and deployment of custom CRM connector with automated webhooks."
+    )
+
+    resp2 = await async_client.post(
+        "/api/v1/intake", json=cosmetic_variant, headers=headers
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["proposal_id"] == prop_id
 
 
 @pytest.mark.asyncio

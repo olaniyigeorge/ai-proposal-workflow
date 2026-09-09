@@ -1,4 +1,5 @@
 import hashlib
+import re
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,15 +15,44 @@ from app.models.proposal import (
 from app.schemas.intake import IntakePayload
 
 
-def compute_intake_key(timestamp: str, respondent_email: str) -> str:
-    raw = f"{timestamp.strip().lower()}:{respondent_email.strip().lower()}"
+def normalize_text(value: str) -> str:
+    """Deterministic normalization for idempotency-key inputs.
+
+    Lowercases, trims, collapses internal whitespace, and strips trailing
+    sentence punctuation so cosmetic differences (extra spaces, a trailing
+    period, re-typed casing) don't produce a different key for what is
+    substantively the same submission.
+    """
+    collapsed = re.sub(r"\s+", " ", value.strip().lower())
+    return collapsed.rstrip(".,;:!")
+
+
+def compute_intake_key(company_name: str, project_scope: str, respondent_email: str) -> str:
+    """Idempotency key = hash(company_name + normalized project_scope + respondent_email).
+
+    Deliberately excludes `timestamp`: a duplicate n8n webhook retry and a
+    salesperson resubmitting the same form both carry the same
+    (company_name, project_scope, respondent_email) but a *different*
+    timestamp, so keying on timestamp alone (the original scheme) only
+    caught the former, not the latter. See docs/decisions.md #4 and
+    docs/edge-cases.md "Duplicate intake beyond webhook retries".
+    """
+    raw = "|".join(
+        [
+            normalize_text(company_name),
+            normalize_text(project_scope),
+            normalize_text(respondent_email),
+        ]
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 async def process_intake(
     db: AsyncSession, payload: IntakePayload
 ) -> tuple[Proposal, bool]:
-    key = compute_intake_key(payload.timestamp, payload.respondent_email)
+    key = compute_intake_key(
+        payload.company_name, payload.project_scope, payload.respondent_email
+    )
 
     stmt = select(IntakeSubmission).where(IntakeSubmission.intake_key == key)
     res = await db.execute(stmt)

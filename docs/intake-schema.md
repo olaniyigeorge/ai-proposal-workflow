@@ -22,7 +22,7 @@ Reference source: PRD "Proposal Intake Fields" + reference Google Form (`https:/
 
 ## Idempotency key
 
-`intake_key = hash(timestamp + email_address)` — computed by FastAPI from the two Sheet-only columns above. Both are set by Google Forms at submission time and are unique per row. Enforced as a DB unique constraint on `IntakeSubmission`; `POST /intake` is an upsert (`ON CONFLICT DO NOTHING`, return the existing `Proposal` id) so n8n retries are safe no-ops. See `decisions.md` #4.
+`intake_key = hash(company_name + normalize(project_scope) + respondent_email)` — computed by FastAPI (`compute_intake_key` in `intake_service.py`) from three canonical fields, **not** `timestamp`. `normalize()` lowercases, trims, collapses internal whitespace, and strips trailing punctuation so re-typed casing/spacing doesn't fork the key. Enforced as a DB unique constraint on `IntakeSubmission`; `POST /intake` is an upsert (return the existing `Proposal` id on conflict) so both n8n retries *and* a salesperson resubmitting the same form are safe no-ops. Supersedes the original `hash(timestamp + email_address)` scheme, which only caught the former. See `decisions.md` #4 and `edge-cases.md` "Duplicate intake beyond webhook retries".
 
 ## Template ≠ intake fields (must reconcile)
 
