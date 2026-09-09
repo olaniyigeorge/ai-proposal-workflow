@@ -1,4 +1,5 @@
-"""The only module allowed to import the `anthropic` SDK directly (per
+"""
+The only module allowed to import the `anthropic` SDK directly (per
 CLAUDE.md: "adapters are the only place that import a third-party SDK").
 """
 

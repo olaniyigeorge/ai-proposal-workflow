@@ -1,4 +1,3 @@
-import logging
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +51,7 @@ async def generate_all_sections(db: AsyncSession, proposal: Proposal) -> None:
     try:
         for section_key in GENERATED_SECTION_KEYS:
             section = sections_by_key[section_key]
+            print(f"\n ==== GENERATING {section} ====\n")
             system_prompt = build_system_prompt()
             user_prompt = build_user_prompt(proposal, section_key)
             try:
@@ -87,6 +87,7 @@ async def run_generation_job(proposal_id: uuid.UUID) -> None:
             logger.error("Generation job: proposal %s no longer exists", proposal_id)
             return
         try:
+            print("\n ==== GENERATING PROPOSAL ====\n")
             await generate_all_sections(db, proposal)
         except Exception:
             logger.exception(
