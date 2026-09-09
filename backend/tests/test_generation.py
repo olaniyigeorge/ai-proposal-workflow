@@ -23,6 +23,7 @@ from app.models.proposal import (
     SectionApprovalStatus,
     SectionKey,
 )
+from app.services.proposal_service import get_proposal_by_id
 from tests.conftest import TestAsyncSessionLocal
 
 
@@ -61,11 +62,7 @@ def test_assemble_section_content_keeps_pinned_scope_for_proposed_solution() -> 
     assert result == "Scope:\nBuild a widget factory\n\nHere is the approach."
 
 
-def test_assemble_section_content_is_pure_generated_for_introduction_and_deliverables() -> None:
-    assert (
-        assemble_section_content(SectionKey.INTRODUCTION, "", "  Welcome.  ")
-        == "Welcome."
-    )
+def test_assemble_section_content_is_pure_generated_for_deliverables() -> None:
     assert (
         assemble_section_content(SectionKey.DELIVERABLES, "old pinned text", "  A list.  ")
         == "A list."
@@ -127,9 +124,13 @@ async def test_start_generation_from_draft_succeeds(db_session) -> None:
 
 @pytest.mark.asyncio
 async def test_start_generation_rejects_wrong_state(db_session) -> None:
+    # IN_REVIEW -> GENERATING is legal (re-running full generation while still
+    # in review), so use PENDING_APPROVAL — generation has no defined path
+    # from there per docs/system-flow.md §3.
     proposal = await _persist_proposal(db_session)
     transition_proposal(proposal, ProposalStatus.GENERATING)
     transition_proposal(proposal, ProposalStatus.IN_REVIEW)
+    transition_proposal(proposal, ProposalStatus.PENDING_APPROVAL)
     db_session.add(proposal)
     await db_session.commit()
 
@@ -155,9 +156,6 @@ async def test_generate_all_sections_success_updates_only_generated_sections(
     assert proposal.status == ProposalStatus.IN_REVIEW
     by_key = {s.section_key: s for s in proposal.sections}
 
-    assert by_key[SectionKey.INTRODUCTION].content == "Generated text."
-    assert by_key[SectionKey.INTRODUCTION].content_origin == ContentOrigin.AI_GENERATED
-
     assert by_key[SectionKey.PROPOSED_SOLUTION].content == (
         "Scope:\nBuild a widget factory\n\nGenerated text."
     )
@@ -167,7 +165,11 @@ async def test_generate_all_sections_success_updates_only_generated_sections(
     assert by_key[SectionKey.DELIVERABLES].content_origin == ContentOrigin.AI_GENERATED
 
     # Sibling sections never touched by generation — content, version, and
-    # origin flag must remain exactly as intake wrote them.
+    # origin flag must remain exactly as intake wrote them. Introduction is a
+    # sibling now too: the reference template has no generated placeholder in
+    # it, so it's assembled once at intake and never calls Claude.
+    assert by_key[SectionKey.INTRODUCTION].content == ""
+    assert by_key[SectionKey.INTRODUCTION].content_origin == ContentOrigin.TEMPLATE_DEFAULT
     assert by_key[SectionKey.TIMELINE].content == "timeline"
     assert by_key[SectionKey.TIMELINE].content_origin == ContentOrigin.TEMPLATE_DEFAULT
     assert by_key[SectionKey.TIMELINE].version == 1
@@ -298,17 +300,24 @@ async def test_generate_endpoint_happy_path(
     detail = detail_resp.json()
     assert detail["status"] == "IN_REVIEW"
     sections = {s["section_key"]: s for s in detail["sections"]}
-    assert sections["introduction"]["content"] == "Generated section text."
-    assert sections["introduction"]["content_origin"] == "ai_generated"
+    # Introduction has no generated placeholder in the reference template —
+    # it's pinned boilerplate assembled at intake, never touched by Claude.
+    assert sections["introduction"]["content_origin"] == "template_default"
+    assert "needs widgets" in sections["introduction"]["content"]
+    assert sections["deliverables"]["content"] == "Generated section text."
+    assert sections["deliverables"]["content_origin"] == "ai_generated"
     assert "Build a widget factory" in sections["proposed_solution"]["content"]
     assert sections["timeline"]["content"] == "8 weeks"
     assert sections["timeline"]["content_origin"] == "template_default"
 
 
 @pytest.mark.asyncio
-async def test_generate_endpoint_rejects_wrong_state(
+async def test_generate_endpoint_allows_rerun_while_in_review(
     async_client: AsyncClient, monkeypatch
 ) -> None:
+    """IN_REVIEW -> GENERATING is a legal edge in the state machine (a
+    salesperson re-running full generation while still reviewing) — the
+    endpoint must allow a second call, not reject it."""
     monkeypatch.setattr(generation_service, "AsyncSessionLocal", TestAsyncSessionLocal)
 
     async def fake_generate_text(system_prompt: str, user_prompt: str) -> str:
@@ -329,9 +338,36 @@ async def test_generate_endpoint_rejects_wrong_state(
     )
     assert first.status_code == 202
 
-    # Proposal is now IN_REVIEW (generation already completed) — a second
-    # call must be rejected, not silently re-run.
     second = await async_client.post(
         f"/api/v1/proposals/{proposal_id}/generate", headers=AUTH_HEADERS
     )
-    assert second.status_code == 409
+    assert second.status_code == 202
+
+
+@pytest.mark.asyncio
+async def test_generate_endpoint_rejects_wrong_state(
+    async_client: AsyncClient, monkeypatch
+) -> None:
+    """No defined path into GENERATING from PENDING_APPROVAL (docs/system-flow.md
+    §3) — the endpoint must reject it with 409, not silently re-run generation."""
+    monkeypatch.setattr(generation_service, "AsyncSessionLocal", TestAsyncSessionLocal)
+
+    payload = INTAKE_PAYLOAD.copy()
+    payload["timestamp"] = "2026-09-09 16:30:00"
+    payload["respondent_email"] = "gen-test-3@example.com"
+    create_resp = await async_client.post(
+        "/api/v1/intake", json=payload, headers=INTAKE_HEADERS
+    )
+    proposal_id = uuid.UUID(create_resp.json()["proposal_id"])
+
+    async with TestAsyncSessionLocal() as db:
+        proposal = await get_proposal_by_id(db, proposal_id)
+        transition_proposal(proposal, ProposalStatus.GENERATING)
+        transition_proposal(proposal, ProposalStatus.IN_REVIEW)
+        transition_proposal(proposal, ProposalStatus.PENDING_APPROVAL)
+        await db.commit()
+
+    response = await async_client.post(
+        f"/api/v1/proposals/{proposal_id}/generate", headers=AUTH_HEADERS
+    )
+    assert response.status_code == 409
