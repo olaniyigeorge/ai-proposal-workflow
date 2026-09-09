@@ -1,0 +1,53 @@
+'use client';
+
+import React from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+
+export function NavBar() {
+  const pathname = usePathname();
+
+  const navItems = [
+    {
+      name: 'Proposals',
+      href: '/proposals',
+      active: pathname.startsWith('/proposals'),
+      icon: (
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <nav className="space-y-1">
+      {navItems.map((item) => (
+        <Link
+          key={item.name}
+          href={item.href}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+            item.active
+              ? 'bg-indigo-600/15 text-indigo-400 border border-indigo-500/20 shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
+          }`}
+        >
+          <span className={item.active ? 'text-indigo-400' : 'text-zinc-400'}>
+            {item.icon}
+          </span>
+          {item.name}
+        </Link>
+      ))}
+    </nav>
+  );
+}

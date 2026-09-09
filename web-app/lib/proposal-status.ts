@@ -1,0 +1,220 @@
+import {
+  ProposalStatus,
+  SectionApprovalStatus,
+  ContentOrigin,
+  ProposalDetailResponse,
+} from './api/types';
+
+export interface StatusConfig {
+  label: string;
+  badgeClass: string;
+  dotClass: string;
+  description: string;
+  isTransient?: boolean;
+  isFailed?: boolean;
+}
+
+export const PROPOSAL_STATUS_CONFIG: Record<ProposalStatus, StatusConfig> = {
+  DRAFT: {
+    label: 'Draft',
+    badgeClass: 'bg-zinc-800/80 text-zinc-300 border-zinc-700/60',
+    dotClass: 'bg-zinc-400',
+    description: 'Intake received. Sections not yet generated.',
+  },
+  GENERATING: {
+    label: 'Generating AI Content',
+    badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-700/60',
+    dotClass: 'bg-indigo-400 animate-pulse',
+    description: 'Claude is generating proposal sections in the background.',
+    isTransient: true,
+  },
+  GENERATION_FAILED: {
+    label: 'Generation Failed',
+    badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
+    dotClass: 'bg-rose-400',
+    description: 'Section generation encountered an error. Retry available.',
+    isFailed: true,
+  },
+  IN_REVIEW: {
+    label: 'In Review',
+    badgeClass: 'bg-amber-950/80 text-amber-300 border-amber-700/60',
+    dotClass: 'bg-amber-400',
+    description: 'Proposal is under salesperson review and editing.',
+  },
+  PENDING_APPROVAL: {
+    label: 'Pending Approval',
+    badgeClass: 'bg-sky-950/80 text-sky-300 border-sky-700/60',
+    dotClass: 'bg-sky-400',
+    description: 'Ready for final review and approval.',
+  },
+  APPROVED: {
+    label: 'Approved',
+    badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60',
+    dotClass: 'bg-emerald-400',
+    description: 'All sections approved. Ready for document rendering.',
+  },
+  DOCUMENT_GENERATING: {
+    label: 'Rendering Document',
+    badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-700/60',
+    dotClass: 'bg-indigo-400 animate-pulse',
+    description: 'Generating high-fidelity branded PDF.',
+    isTransient: true,
+  },
+  DOCUMENT_GENERATION_FAILED: {
+    label: 'PDF Render Failed',
+    badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
+    dotClass: 'bg-rose-400',
+    description: 'Document rendering failed. Retry available.',
+    isFailed: true,
+  },
+  DOCUMENT_READY: {
+    label: 'Document Ready',
+    badgeClass: 'bg-teal-950/80 text-teal-300 border-teal-700/60',
+    dotClass: 'bg-teal-400',
+    description: 'Final PDF generated and stored. Ready for client delivery.',
+  },
+  DELIVERING: {
+    label: 'Sending to Client',
+    badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-700/60',
+    dotClass: 'bg-indigo-400 animate-pulse',
+    description: 'Sending proposal email with PDF attachment.',
+    isTransient: true,
+  },
+  DELIVERY_FAILED: {
+    label: 'Delivery Failed',
+    badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
+    dotClass: 'bg-rose-400',
+    description: 'Email delivery failed or bounced. Retry available.',
+    isFailed: true,
+  },
+  DELIVERED: {
+    label: 'Delivered',
+    badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60',
+    dotClass: 'bg-emerald-400',
+    description: 'Delivered to client via email.',
+  },
+  REJECTED: {
+    label: 'Changes Requested',
+    badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
+    dotClass: 'bg-rose-400',
+    description: 'Approval rejected with feedback. Returned to In Review.',
+  },
+  CLOSED: {
+    label: 'Closed',
+    badgeClass: 'bg-slate-900 text-slate-400 border-slate-700/50',
+    dotClass: 'bg-slate-500',
+    description: 'Workflow concluded.',
+  },
+};
+
+export function getStatusConfig(status: ProposalStatus | string): StatusConfig {
+  const normalized = status as ProposalStatus;
+  return (
+    PROPOSAL_STATUS_CONFIG[normalized] || {
+      label: status,
+      badgeClass: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+      dotClass: 'bg-zinc-400',
+      description: status,
+    }
+  );
+}
+
+export function isTransientStatus(status: ProposalStatus | string): boolean {
+  return ['GENERATING', 'DOCUMENT_GENERATING', 'DELIVERING'].includes(status);
+}
+
+export function isFailedStatus(status: ProposalStatus | string): boolean {
+  return [
+    'GENERATION_FAILED',
+    'DOCUMENT_GENERATION_FAILED',
+    'DELIVERY_FAILED',
+  ].includes(status);
+}
+
+export interface SectionStatusConfig {
+  label: string;
+  badgeClass: string;
+  dotClass: string;
+}
+
+export const SECTION_STATUS_CONFIG: Record<SectionApprovalStatus, SectionStatusConfig> = {
+  pending: {
+    label: 'Pending Review',
+    badgeClass: 'bg-amber-950/60 text-amber-300 border-amber-800/40',
+    dotClass: 'bg-amber-400',
+  },
+  approved: {
+    label: 'Section Approved',
+    badgeClass: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40',
+    dotClass: 'bg-emerald-400',
+  },
+};
+
+export function getSectionStatusConfig(status: SectionApprovalStatus | string): SectionStatusConfig {
+  const normalized = status as SectionApprovalStatus;
+  return (
+    SECTION_STATUS_CONFIG[normalized] || {
+      label: status,
+      badgeClass: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+      dotClass: 'bg-zinc-400',
+    }
+  );
+}
+
+export interface ContentOriginConfig {
+  label: string;
+  badgeClass: string;
+  description: string;
+}
+
+export const CONTENT_ORIGIN_CONFIG: Record<ContentOrigin, ContentOriginConfig> = {
+  template_default: {
+    label: 'Template Boilerplate',
+    badgeClass: 'bg-zinc-800/80 text-zinc-400 border-zinc-700/50',
+    description: 'Default template structure',
+  },
+  ai_generated: {
+    label: 'AI Generated',
+    badgeClass: 'bg-violet-950/70 text-violet-300 border-violet-800/40',
+    description: 'Generated by Claude from intake submission',
+  },
+  human_edited: {
+    label: 'Human Edited',
+    badgeClass: 'bg-blue-950/70 text-blue-300 border-blue-800/40',
+    description: 'Manually edited by salesperson',
+  },
+  human_edited_after_generation: {
+    label: 'Edited After AI',
+    badgeClass: 'bg-cyan-950/70 text-cyan-300 border-cyan-800/40',
+    description: 'AI-generated then customized by salesperson',
+  },
+};
+
+export function getContentOriginConfig(origin: ContentOrigin | string): ContentOriginConfig {
+  const normalized = origin as ContentOrigin;
+  return (
+    CONTENT_ORIGIN_CONFIG[normalized] || {
+      label: origin.replace(/_/g, ' '),
+      badgeClass: 'bg-zinc-800 text-zinc-400 border-zinc-700',
+      description: origin,
+    }
+  );
+}
+
+export function pendingSectionCount(proposal: ProposalDetailResponse): number {
+  if (!proposal.sections) return 0;
+  return proposal.sections.filter(
+    (s) => s.approval_status.toLowerCase() !== 'approved'
+  ).length;
+}
+
+export function canSubmitForApproval(proposal: ProposalDetailResponse): boolean {
+  return proposal.status === 'IN_REVIEW';
+}
+
+export function canApproveProposal(proposal: ProposalDetailResponse): boolean {
+  return (
+    (proposal.status === 'IN_REVIEW' || proposal.status === 'PENDING_APPROVAL') &&
+    pendingSectionCount(proposal) === 0
+  );
+}
