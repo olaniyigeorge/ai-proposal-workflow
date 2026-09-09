@@ -61,24 +61,6 @@ Data flow: Google Form → Sheets → n8n → `POST /intake` (FastAPI) → Supab
 - PDF rendering needs explicit fidelity tests (branding, page breaks, long-content overflow) — there's no earlier point in the flow where a rendering bug would surface, since the PDF is generated exactly once.
 - Test framework choice for both services is not yet decided — confirm before Phase 1 test scaffolding begins.
 
-## Commands
-
-**Frontend** (`web-app/`)
-```
-npm run dev      # local dev server
-npm run build    # production build
-npm run start    # run production build
-npm run lint     # eslint
-```
-
-**Backend** (`backend/`)
-```
-source venv/bin/activate
-pip install -r requirements.txt   # once dependencies are pinned
-uvicorn main:app --reload         # local dev server
-```
-No dependencies are installed yet — `requirements.txt`/`pyproject.toml` and the FastAPI app itself still need to be created (Phase 0/1, see `docs/architecture.md` §7).
-
 ## Important Business Rules
 
 - The PDF is only generated after full approval and is not silently replaced afterward — but whether a post-approval edit forces a new PDF + re-approval cycle is still open (decisions #9's follow-up).
