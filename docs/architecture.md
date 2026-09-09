@@ -151,7 +151,7 @@ Claude integration for generating all sections from an intake submission; `Gener
 Section editor UI; edit persistence; content-origin tracking (`ai_generated`/`human_edited`) per section — must exist before Phase 4 touches regeneration, or edits will be silently at risk.
 
 **Phase 4 — Section-level regeneration**
-Regeneration endpoint and UI; sibling-summary context assembly; regeneration-instruction input (pending Q10); version history per section; the "regenerating a human-edited section requires confirmation" guard.
+Regeneration endpoint and UI; sibling-summary context assembly; regeneration-instruction input (resolved, decisions #10/#13 — mandatory, not optional); version history per section; the "regenerating a human-edited section requires confirmation" guard; per-section regeneration-suggestion log so the salesperson's instruction trail across attempts is preserved and visible in the UI (not re-typed from memory each attempt — see `decisions.md` #13b).
 
 **Phase 5 — Internal approval workflow**
 Section-level and whole-proposal approval endpoints (decisions #15); self-approval permitted by design (decisions #14, no special-casing needed); state machine transitions and guards from `system-flow.md` §3 enforced — proposal-level `APPROVED` requires all sections approved; approval-invalidation-on-regeneration behavior (default rule assumed, confirm per decisions #9).
@@ -160,7 +160,7 @@ Section-level and whole-proposal approval endpoints (decisions #15); self-approv
 Branded PDF rendering (decisions #7), generated exactly once at `APPROVED`; storage in Supabase Storage; `DocumentArtifact` records; explicit rendering-fidelity test pass; failure/retry handling from §6.
 
 **Phase 7 — Client delivery**
-Email delivery with PDF attachment (decisions #16); `DeliveryRecord` sent/delivered status tracking (decisions #17); failure/retry handling; delivery status visible in the UI.
+Email delivery with the proposal PDF uploaded to storage and a link embedded in the email body (decisions #16; reference: `docs/reference/client-email-template.md` — subject "Proposal for {{company_name}}", ~60-word body, no attachment). Salesperson reviews the composed email draft (with the link) before sending — no auto-send from DOCUMENT_READY. `DeliveryRecord` sent/delivered status tracking (decisions #17); failure/retry handling; delivery status visible in the UI.
 
 **Phase 8 — Activity logging & audit trail (cross-cutting, hardened here)**
 While individual actions should already be logging as each phase ships, this phase makes the `ActivityLogEntry` trail complete, queryable, dashboard-viewable, and **exportable** (decisions #19) end-to-end — plus finalizes retention/access-control policy for the PII confirmed present (decisions #18) before real client data flows through the system.

@@ -68,6 +68,18 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-09 — Regeneration loses the salesperson's instruction context across attempts
+
+**The gap (business view):** A salesperson regenerates a section 2–3 times to get it right, each time typing a fresh instruction from memory ("more formal", "shorter", "focus on ROI"). There's no record of what they asked on previous attempts, so they repeat themselves, refine by guesswork, or give up after the cap. The 3-attempt cap (#13) becomes frustrating rather than a useful constraint — and the salesperson can't tell whether the last regeneration actually addressed what they meant. For a creative-writing task that's meant to converge, losing the instruction trail per section wastes attempts and degrades the output.
+
+**The fix (proposed):** The regeneration endpoint (Phase 4) supports a per-section regeneration-suggestion log: each regeneration call records the instruction supplied + a short note/context the salesperson optionally attaches, so the UI can show the attempt history for that section ("attempt 1: 'make more formal' → attempt 2: 'shorten, keep pricing facts' → attempt 3: 'lead with the ROI line'"). This is not auto-generated content — it's the salesperson's own instruction trail, surfaced so they don't lose what they're trying to say across attempts. The cap (3) still applies; the log just makes each attempt informed rather than amnesiac. Storage: a small per-section list on the section (or a separate regenerate-history table) — confirm schema shape in Phase 4. The instruction itself is already mandatory per #13; the log is the visibility layer on top.
+
+**Where it lives:** Phase 4 regeneration service + endpoint (records instruction per call), Phase 4/regenerate UI (shows attempt history + current instruction). No schema change required if stored as a JSON list on ProposalSection; a separate table if queryability/audit matters. Decide in Phase 4.
+
+**Open follow-up:** whether the suggestion log is editable/deletable by the salesperson (likely yes — it's their notes) vs append-only (cleaner audit). Default: append-only for the instruction that was actually sent, editable note field optional — confirm before building.
+
+---
+
 ## YYYY-MM-DD — Short title
 
 ```

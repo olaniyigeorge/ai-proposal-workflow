@@ -54,11 +54,13 @@ Set against `docs/reference/proposal-template.md` and `docs/reference/client-ema
 
 | Section | Target length | Notes |
 |---|---|---|
-| Introduction | n/a — not generated | Pure boilerplate + verbatim facts, assembled at intake. No word target needed since nothing is free-generated. |
-| Proposed Solution | 120–200 words (generated portion only) | `project_scope` verbatim goes in above this; the generated `recommended_approach` is 1-2 tight paragraphs, not a brainstorm dump. |
+| Introduction | n/a — not generated | Pure boilerplate + verbatim facts, assembled at intake (see "Proposal sections" above — the template has no generated placeholder here at all). No word target needed since nothing is free-generated; total length is whatever `client_needs_summary`/`goals_and_objectives` run to plus ~45 words of fixed frame. |
+| Proposed Solution | 120–200 words (generated portion only) | `project_scope` verbatim goes in above this (adds its own length on top, depending on the intake answer); the generated `recommended_approach` is 1-2 tight paragraphs, not a brainstorm dump. |
 | Deliverables | 60–120 words | Short list, one line per deliverable. `recommended_services` expanded/formatted here — if it's already a clean list, generation just formats it, it doesn't inflate it. |
 | Timeline | n/a — not generated | `proposed_timeline` verbatim, no generation. |
 | Pricing | n/a — not generated | `estimated_pricing` verbatim, no generation. |
 | Next Steps | n/a — not generated | Static boilerplate. |
 
-Practical check: if a section comes back well over its target, the regenerate instruction can be "shorten to ~150 words, keep all facts" — cheaper than editing a wall of text by hand. The UI word-count badge (still open, see `docs/edge-cases.md`) makes the over-length sections visible at a glance so the salesperson knows where to spend edit time.
+A full proposal's total length is dominated by how long the intake answers are (`project_scope`, `client_needs_summary`, etc., all pinned verbatim) plus ~230 words of fixed template frame — the only content this project's own prompting controls is the two generated pieces above, so that's what the word targets constrain.
+
+Practical check: if a generated piece comes back well over target, the regenerate instruction can be "shorten to ~150 words, keep all facts" — cheaper than editing a wall of text by hand. The UI word-count badge (still open, see `docs/edge-cases.md`) makes the over-length sections visible at a glance so the salesperson knows where to spend edit time.
