@@ -211,3 +211,48 @@ async def test_list_and_get_proposals(async_client: AsyncClient) -> None:
         f"/api/v1/proposals/{fake_id}", headers=auth_headers
     )
     assert not_found_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_intake_allows_missing_salesperson_name(async_client: AsyncClient) -> None:
+    """A client filling the form directly (no salesperson on the call) must
+    not be rejected — salesperson_name is optional; the proposal is created
+    unassigned (docs/decisions.md #20)."""
+    headers = {"X-Webhook-Secret": "dev-webhook-secret"}
+    payload = SAMPLE_PAYLOAD.copy()
+    del payload["salesperson_name"]
+    payload["timestamp"] = "2026-09-09 17:00:00"
+    payload["respondent_email"] = "self-serve-client@example.com"
+
+    response = await async_client.post("/api/v1/intake", json=payload, headers=headers)
+    assert response.status_code == 201
+    proposal_id = response.json()["proposal_id"]
+
+    auth_headers = {"Authorization": "Bearer dev-salesperson-token"}
+    detail_resp = await async_client.get(
+        f"/api/v1/proposals/{proposal_id}", headers=auth_headers
+    )
+    assert detail_resp.json()["salesperson_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_intake_normalizes_blank_salesperson_name_to_unassigned(
+    async_client: AsyncClient,
+) -> None:
+    """A blank Sheet cell (empty string / whitespace) means unassigned too,
+    not a literal empty-string salesperson."""
+    headers = {"X-Webhook-Secret": "dev-webhook-secret"}
+    payload = SAMPLE_PAYLOAD.copy()
+    payload["salesperson_name"] = "   "
+    payload["timestamp"] = "2026-09-09 17:05:00"
+    payload["respondent_email"] = "self-serve-client-2@example.com"
+
+    response = await async_client.post("/api/v1/intake", json=payload, headers=headers)
+    assert response.status_code == 201
+    proposal_id = response.json()["proposal_id"]
+
+    auth_headers = {"Authorization": "Bearer dev-salesperson-token"}
+    detail_resp = await async_client.get(
+        f"/api/v1/proposals/{proposal_id}", headers=auth_headers
+    )
+    assert detail_resp.json()["salesperson_name"] is None
