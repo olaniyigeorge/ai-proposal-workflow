@@ -45,3 +45,20 @@ class RegenerationInstructionRequiredError(DomainError):
         super().__init__(
             f"A regeneration instruction is required to regenerate section '{section_key.value}'"
         )
+
+
+class SectionGenerationError(DomainError):
+    """Raised when a Claude call for a section fails during a generation job.
+
+    Caller (services/generation_service.py) must catch this, leave every
+    section's content/version/origin untouched, and transition the Proposal to
+    GENERATION_FAILED instead of committing a partial/blank section — see
+    CLAUDE.md "A failed call must leave the prior state intact".
+    """
+
+    def __init__(self, section_key: SectionKey, reason: str) -> None:
+        self.section_key = section_key
+        self.reason = reason
+        super().__init__(
+            f"Generation failed for section '{section_key.value}': {reason}"
+        )

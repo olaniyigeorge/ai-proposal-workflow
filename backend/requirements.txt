@@ -54,3 +54,4 @@ watchfiles==1.2.0
 websockets==15.0.1
 yarl==1.24.5
 email-validator>=2.0.0
+anthropic>=1.0.0
