@@ -4,6 +4,52 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-11 — n8n workflow reviewed for production readiness; one real regression found (inline secret)
+
+**Context:** the user's updated n8n workflow (Code node now string-coerces every Sheet value before sending, and — closing the exact gap flagged in the 2026-09-10 entry below — both the Code node's own validation throw and the HTTP node's failure now route via `continueErrorOutput` to a new "Append row in sheet" node that dead-letters the failed row into an "Invalid Responses" Sheet tab). Reviewed against error handling, edge cases, idempotency, and security.
+
+**What's solid:**
+- **Error handling**: both failure points (Code-node validation, HTTP 4xx/5xx) now converge on one dead-letter path instead of failing silently — exactly the fix this doc previously called for.
+- **Edge case**: coercing every value to a trimmed string before sending closes a real type-mismatch risk — Google Sheets can return `estimated_pricing` as a number if the cell is formatted as currency, which would otherwise 422 against `IntakePayload`'s `str` field.
+
+**Regression found — the shared secret is inline in the workflow JSON, not a credential.** The HTTP node's previous version (2026-09-10) referenced a proper n8n credential (`genericAuthType: httpHeaderAuth`, `credentials.httpHeaderAuth`). The version reviewed here replaced that with a literal header parameter: `{"name": "x-webhook-secret", "value": "dev-webhook-secret"}` typed directly into `headerParameters`. This is precisely what decisions #3 says not to do ("store as env var on both sides — never inline it in the n8n workflow JSON export"). Anyone who receives this workflow JSON (a backup, a shared export, a support request) now has the live webhook secret in plaintext.
+
+**Fix (accepted, not yet applied — first item on the go-live checklist):** move the secret into n8n's own secret manager / external-secrets integration (n8n supports resolving credential values from an external vault rather than storing them in the workflow itself) instead of the current literal header value or even a plain Header Auth credential typed into n8n's UI. Currently the correct approach is used only for local/dev convenience — the user has confirmed this is the deliberate first step to take before going live, not an oversight to fix silently mid-build. Recorded here specifically so it's citable in a personal reflection on environment/secrets handling.
+
+**Verified 2026-09-11 (not a bug after all):** checked directly against a real failed execution — the "Append row in sheet" node's canonical-named columns (`timestamp`, `respondent_email`, `client_name`, `client_email`, `company_name`, `date_of_call`, `salesperson_name`, `client_needs_summary`, `project_scope`, `goals_and_objectives`, `recommended_services`, `proposed_timeline`, `estimated_pricing`) all populate correctly from the Code node's error output, alongside `error`/`details`. The earlier concern in this entry (that n8n might surface only the raw pre-Code-node item shape on a thrown error, leaving canonical columns blank) does not hold for this node/version — the previous draft of this entry is superseded by this confirmed result.
+
+**Also worth knowing (expected, not a bug):** the Google Sheets Trigger's `rowAdded` event only fires for genuinely new rows — if a row dead-letters into "Invalid Responses" and someone later fixes the *original* row in the source sheet, nothing re-triggers automatically. Recovery is manual: fix the mapping/data, then manually re-run that execution (or re-add a corrected row) in n8n. This matches the "a form/mapping fix always needs a human either way" reasoning in the 2026-09-10 entry, just naming it explicitly so it isn't assumed to be automatic.
+
+**Where it lives:** the n8n workflow itself (not version-controlled in this repo — reviewed from the exported JSON the user shared). `docs/decisions.md` #3, #5.
+
+---
+
+## 2026-09-11 — Post-approval document regeneration resolved; old section content is never retained
+
+**The gap (business view):** `document_service.start_document_generation` unconditionally raised `DocumentAlreadyGeneratedError` if any `DocumentArtifact` already existed for the proposal — including after a legitimate edit-then-re-approve cycle (decisions #9's `regeneration_invalidates_approval` already forces a post-approval edit back to `IN_REVIEW`). That made re-approval a dead end: a salesperson could fix a section after `DOCUMENT_READY`, get the proposal all the way back to `APPROVED` again, and then be permanently unable to generate a PDF reflecting the fix.
+
+**The fix (implemented 2026-09-11, resolves decisions #9):** `start_document_generation` now deletes an existing `DocumentArtifact` before transitioning to `DOCUMENT_GENERATING`, rather than rejecting. This is safe specifically because `transition_proposal` already rules out reaching `APPROVED` a second time without a genuine intervening edit/regeneration — so a `DocumentArtifact` found at this point is always stale content from a prior approval cycle, never a duplicate request for the same one. The regenerated PDF reuses the same deterministic Storage path (`build_document_filename` depends only on client/company name, not a version number) and `upload_pdf`'s `upsert` overwrites the old object in place — no orphaned file left in Storage, no Storage-delete call needed. `DocumentAlreadyGeneratedError` removed as dead code (nothing raises it anymore); the only remaining guard is `InvalidTransitionError` when the proposal isn't `APPROVED`.
+
+**Answering "are old section versions ever kept?" — no.** `ProposalSection.version` is an incrementing integer, but the prior `content` is overwritten in place on every manual edit and every regeneration — nothing snapshots what an *approved* version of a section actually said before it was changed. `regeneration_log` records the instruction/outcome/resulting-version metadata per attempt, but not the text itself, and `ClaudeCallLog` only captures what Claude *generated*, not what a human then approved. Net effect: once a section is edited or regenerated post-approval and the document is regenerated, there is no way to reconstruct exactly what the previously-approved, previously-delivered PDF said at the content level (the old PDF file itself, if not yet overwritten, is the only surviving record, and it's about to be overwritten by this same fix).
+
+**The fix (not implemented, deliberately flagged):** a real section-version-history table (one row per historical `content`+`content_origin`+`approved_at`, not just the current row) would be needed if this ever matters for a dispute or compliance question ("what did we actually promise them in the version we sent"). Not built here — this pass only fixed the dead-end bug, it didn't add version history, since that's a materially bigger feature (a new table, migration, and a UI to browse it) than the regeneration fix itself.
+
+**Where it lives:** `backend/app/services/document_service.py::start_document_generation`, `backend/app/domain/exceptions.py` (`DocumentAlreadyGeneratedError` removed), `backend/app/api/v1/endpoints/proposals.py`, tests in `backend/tests/test_document.py`. `docs/decisions.md` #9.
+
+---
+
+## 2026-09-11 — PII/retention policy defined; activity log audited and fixed against it
+
+**The gap:** decisions #18 (PII/retention policy) was still open, and Phase 8's freshly-built `ActivityLogEntry` (2026-09-10) hadn't been checked against any concrete policy — it turned out to violate the "avoid storing PII in operational logs" principle architecture.md §1 already warned about: the `CREATED` event's description/metadata included `company_name`, and `DELIVERED`/`DELIVERY_FAILED` included `client_email`/`recipient_email` and (for the failure case) a raw provider error string that could itself echo the recipient's address back.
+
+**The fix (implemented 2026-09-11):** a concrete policy now exists at `docs/reference/data-retention-policy.md` — PII vs. sensitive-business-data vs. operational-metadata field classification, and retention windows (proposals 24mo, activity logs 12mo, app logs 30 days), defined directly by the project owner. The activity-log call sites in `intake_service.py` and `delivery_service.py` were fixed to stop carrying PII — `proposal_id` (already the foreign key) is the entity reference; the PII itself already lives correctly on `Proposal`/`DeliveryRecord` and doesn't need a second copy in the audit trail. Tests updated (`test_activity_log.py`).
+
+**Not implemented — policy defined, not yet enforced:** no scheduled job deletes anything when a retention window expires (no proposal-expiry job, no activity-log-pruning job, no log-rotation config on `logs/server.logs`); pre-existing `logger.*` calls elsewhere (`generation_service.py`, `regeneration_service.py`, etc.) weren't re-audited against the policy's "must not contain" list in this pass; and Postgres RLS as defense-in-depth is deliberately deferred — see the reference doc's own "Authorization boundary & defense-in-depth RLS" section for why it isn't a safe quick add given the app's current direct (non-PostgREST) Postgres connection, which owns the tables and would bypass RLS by default regardless of policies written against it.
+
+**Where it lives:** `docs/reference/data-retention-policy.md`, `backend/app/services/intake_service.py`, `backend/app/services/delivery_service.py`, `docs/decisions.md` #18.
+
+---
+
 ## 2026-09-10 — Phase 8 (activity log) + Phase 9 (job-failure monitoring) built; three items still open
 
 **The gap (business view):** Two things were missing going into this pass: (1) there was no audit trail at all — CLAUDE.md requires one for every state-relevant action, viewable in the dashboard and exportable for compliance, and nothing in the codebase wrote to anything but the app logger; (2) background-job failures (a failed generation, regeneration, document render, or delivery) only ever surfaced as a `logger.warning`/`logger.error` line with no consistent tag, so nothing external could alert on them the way `INTAKE_SCHEMA_DRIFT` now does for intake.
