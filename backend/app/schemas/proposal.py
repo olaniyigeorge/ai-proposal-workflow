@@ -53,6 +53,14 @@ class SectionRegenerateRequest(BaseModel):
         return value
 
 
+class RequestChangesRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class RejectProposalRequest(BaseModel):
+    reason: Optional[str] = None
+
+
 class ProposalSummaryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
