@@ -7,6 +7,7 @@ and are responsible for persisting the mutations these functions make.
 from app.domain.exceptions import (
     ApprovalGuardError,
     InvalidTransitionError,
+    SectionNotApprovableError,
     SectionNotEditableError,
 )
 from app.models.proposal import Proposal, ProposalStatus, SectionApprovalStatus, SectionKey
@@ -70,6 +71,11 @@ EDITABLE_SECTION_STATUSES: frozenset[ProposalStatus] = frozenset(
 def assert_section_editable(section_key: SectionKey, status: ProposalStatus) -> None:
     if status not in EDITABLE_SECTION_STATUSES:
         raise SectionNotEditableError(section_key, status)
+
+
+def assert_section_approvable(section_key: SectionKey, status: ProposalStatus) -> None:
+    if status != ProposalStatus.IN_REVIEW:
+        raise SectionNotApprovableError(section_key, status)
 
 
 def assert_transition_allowed(current: ProposalStatus, target: ProposalStatus) -> None:
