@@ -1,3 +1,4 @@
+import time
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,9 @@ from app.domain.generation import (
     build_user_prompt,
 )
 from app.domain.proposal_transitions import transition_proposal
+from app.models.claude_call_log import ClaudeCallStatus, ClaudeCallType
 from app.models.proposal import ContentOrigin, Proposal, ProposalStatus
+from app.services.claude_log_service import record_claude_call
 from app.services.proposal_service import get_proposal_by_id
 
 
@@ -51,15 +54,42 @@ async def generate_all_sections(db: AsyncSession, proposal: Proposal) -> None:
     try:
         for section_key in GENERATED_SECTION_KEYS:
             section = sections_by_key[section_key]
-            print(f"\n ==== GENERATING {section} ====\n")
             system_prompt = build_system_prompt()
             user_prompt = build_user_prompt(proposal, section_key)
+            started_at = time.monotonic()
             try:
-                text = await generate_text(system_prompt, user_prompt)
+                result = await generate_text(system_prompt, user_prompt)
             except ClaudeGenerationError as exc:
+                await record_claude_call(
+                    db,
+                    proposal_id=proposal.id,
+                    section_key=section_key.value,
+                    call_type=ClaudeCallType.FULL_GENERATION,
+                    status=ClaudeCallStatus.FAILED,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    duration_ms=int((time.monotonic() - started_at) * 1000),
+                    error_message=str(exc),
+                )
                 raise SectionGenerationError(section_key, str(exc)) from exc
+
+            await record_claude_call(
+                db,
+                proposal_id=proposal.id,
+                section_key=section_key.value,
+                call_type=ClaudeCallType.FULL_GENERATION,
+                status=ClaudeCallStatus.SUCCEEDED,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                duration_ms=int((time.monotonic() - started_at) * 1000),
+                model=result.model,
+                response_text=result.text,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                stop_reason=result.stop_reason,
+            )
             generated[section_key] = assemble_section_content(
-                section_key, section.content, text
+                section_key, section.content, result.text
             )
     except SectionGenerationError as exc:
         logger.warning("Generation failed for proposal %s: %s", proposal.id, exc)
