@@ -8,8 +8,14 @@ import { SectionApprovalBadge } from '@/components/proposals/SectionApprovalBadg
 import { ContentOriginBadge } from '@/components/proposals/ContentOriginBadge';
 import { SectionEditor } from '@/components/proposals/SectionEditor';
 import { RegenerateSectionButton } from '@/components/proposals/RegenerateSectionButton';
+import { GenerateProposalButton } from '@/components/proposals/GenerateProposalButton';
+import { ApproveSectionButton } from '@/components/proposals/ApproveSectionButton';
+import { ApprovalPanel } from '@/components/proposals/ApprovalPanel';
+import { ClaudeCallLogPanel } from '@/components/proposals/ClaudeCallLogPanel';
 import {
+  canApproveSection,
   canEditSection,
+  canTriggerGeneration,
   editInvalidatesApproval,
   isRegenerableSectionKey,
   MAX_REGENERATION_ATTEMPTS,
@@ -60,6 +66,8 @@ export default async function ProposalDetailPage({ params }: PageProps) {
   const totalSections = proposal.sections ? proposal.sections.length : 0;
   const sectionsEditable = canEditSection(proposal);
   const editWillInvalidateApproval = editInvalidatesApproval(proposal);
+  const sectionsApprovable = canApproveSection(proposal);
+  const needsGeneration = canTriggerGeneration(proposal);
 
   return (
     <div className="space-y-8 pb-16">
@@ -110,9 +118,9 @@ export default async function ProposalDetailPage({ params }: PageProps) {
           </svg>
         </div>
         <div className="space-y-1">
-          <div className="font-semibold text-indigo-300">Phase 4 Section Regeneration Active</div>
+          <div className="font-semibold text-indigo-300">Phase 5 Approval Workflow Active</div>
           <div className="text-indigo-300/80 leading-relaxed">
-            Section content is editable in place, and Proposed Solution / Deliverables can be regenerated via Claude with a required instruction (capped at 3 attempts each). Final Approval remains disabled below and will activate once Phase 5 lands.
+            Sections can be edited, regenerated, and approved individually. Submit for approval or approve the entire proposal from the panel on the left. Document generation (Phase 6) and delivery (Phase 7) are next.
           </div>
         </div>
       </div>
@@ -180,7 +188,7 @@ export default async function ProposalDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          {/* Workflow Action Panel (Read-only / Coming Soon) */}
+          {/* Workflow Action Panel */}
           <div className="rounded-xl border border-[#1e2436] bg-[#121520] p-5 space-y-4 shadow-lg shadow-black/20">
             <h2 className="text-sm font-semibold text-white tracking-tight flex items-center gap-2 pb-3 border-b border-[#1e2436]">
               <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -190,34 +198,31 @@ export default async function ProposalDetailPage({ params }: PageProps) {
             </h2>
 
             <div className="space-y-3">
-              {/* Approval guard summary */}
-              <div className="p-3 rounded-lg bg-[#090a0f] border border-[#1e2436] text-xs">
-                <div className="flex justify-between items-center text-zinc-300 mb-1">
-                  <span>Sections Approved:</span>
-                  <span className="font-semibold text-indigo-300">
-                    {totalSections - pendingCount} of {totalSections}
-                  </span>
-                </div>
-                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-indigo-500 transition-all duration-300"
-                    style={{
-                      width: totalSections > 0 ? `${((totalSections - pendingCount) / totalSections) * 100}%` : '0%',
-                    }}
-                  />
-                </div>
-              </div>
+              {needsGeneration ? (
+                <GenerateProposalButton proposalId={proposal.id} status={proposal.status} />
+              ) : (
+                <>
+                  {/* Approval guard summary */}
+                  <div className="p-3 rounded-lg bg-[#090a0f] border border-[#1e2436] text-xs">
+                    <div className="flex justify-between items-center text-zinc-300 mb-1">
+                      <span>Sections Approved:</span>
+                      <span className="font-semibold text-indigo-300">
+                        {totalSections - pendingCount} of {totalSections}
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 transition-all duration-300"
+                        style={{
+                          width: totalSections > 0 ? `${((totalSections - pendingCount) / totalSections) * 100}%` : '0%',
+                        }}
+                      />
+                    </div>
+                  </div>
 
-              {/* Approve Whole Proposal Button (Disabled) */}
-              <button
-                disabled
-                className="w-full py-2.5 px-4 rounded-lg bg-emerald-950/40 border border-emerald-800/40 text-emerald-400/60 font-medium text-xs flex items-center justify-between cursor-not-allowed"
-              >
-                <span>Approve Proposal</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                  Phase 5
-                </span>
-              </button>
+                  <ApprovalPanel proposal={proposal} />
+                </>
+              )}
 
               {/* Generate PDF Button (Disabled) */}
               <button
@@ -316,17 +321,19 @@ export default async function ProposalDetailPage({ params }: PageProps) {
                         editable={sectionsEditable}
                       />
                     )}
-                    <button
-                      disabled
-                      className="px-2.5 py-1 rounded bg-zinc-800/50 border border-zinc-700/50 text-zinc-500 text-[11px] font-medium cursor-not-allowed"
-                    >
-                      Approve (Phase 5)
-                    </button>
+                    <ApproveSectionButton
+                      proposalId={proposal.id}
+                      sectionKey={section.section_key}
+                      approvalStatus={section.approval_status}
+                      editable={sectionsApprovable}
+                    />
                   </div>
                 </div>
               </div>
             ))}
           </div>
+
+          <ClaudeCallLogPanel proposalId={proposal.id} />
         </div>
       </div>
     </div>
