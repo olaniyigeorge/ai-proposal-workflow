@@ -69,6 +69,24 @@ class SectionNotEditableError(DomainError):
         )
 
 
+class SectionNotApprovableError(DomainError):
+    """Raised when a single-section approve is attempted outside IN_REVIEW.
+
+    docs/system-flow.md §3: "each ProposalSection carries its own
+    pending/approved flag that a salesperson can set at any point during
+    IN_REVIEW" — individual approval is not defined for any other status;
+    use the bulk "approve entire proposal" action instead once PENDING_APPROVAL.
+    """
+
+    def __init__(self, section_key: SectionKey, status: ProposalStatus) -> None:
+        self.section_key = section_key
+        self.status = status
+        super().__init__(
+            f"Section '{section_key.value}' cannot be approved while the "
+            f"proposal is {status.value}"
+        )
+
+
 class SectionNotRegenerableError(DomainError):
     """Raised when regeneration is attempted on a section that has no
     AI-generated content to regenerate — a template-pinned section
