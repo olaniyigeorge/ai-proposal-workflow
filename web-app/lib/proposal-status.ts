@@ -3,6 +3,8 @@ import {
   SectionApprovalStatus,
   ContentOrigin,
   ProposalDetailResponse,
+  ProposalSectionResponse,
+  SectionKey,
 } from './api/types';
 
 export interface StatusConfig {
@@ -210,6 +212,43 @@ export function pendingSectionCount(proposal: ProposalDetailResponse): number {
 
 export function canSubmitForApproval(proposal: ProposalDetailResponse): boolean {
   return proposal.status === 'IN_REVIEW';
+}
+
+const EDITABLE_SECTION_STATUSES: ProposalStatus[] = [
+  'IN_REVIEW',
+  'PENDING_APPROVAL',
+  'APPROVED',
+];
+
+export function canEditSection(proposal: ProposalDetailResponse): boolean {
+  return EDITABLE_SECTION_STATUSES.includes(proposal.status as ProposalStatus);
+}
+
+export function editInvalidatesApproval(proposal: ProposalDetailResponse): boolean {
+  return proposal.status === 'PENDING_APPROVAL' || proposal.status === 'APPROVED';
+}
+
+// Only these two sections have any AI-generated content at all (see
+// backend/app/domain/generation.py GENERATED_SECTION_KEYS) — Introduction,
+// Timeline, Pricing, and Next Steps are pinned facts/boilerplate with
+// nothing for Claude to regenerate.
+export const GENERATED_SECTION_KEYS: SectionKey[] = ['proposed_solution', 'deliverables'];
+
+export const MAX_REGENERATION_ATTEMPTS = 3;
+
+export function isRegenerableSectionKey(sectionKey: SectionKey | string): boolean {
+  return GENERATED_SECTION_KEYS.includes(sectionKey as SectionKey);
+}
+
+export function canRegenerateSection(
+  proposal: ProposalDetailResponse,
+  section: ProposalSectionResponse
+): boolean {
+  return (
+    canEditSection(proposal) &&
+    isRegenerableSectionKey(section.section_key) &&
+    section.regeneration_count < MAX_REGENERATION_ATTEMPTS
+  );
 }
 
 export function canApproveProposal(proposal: ProposalDetailResponse): boolean {

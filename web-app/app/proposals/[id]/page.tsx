@@ -6,7 +6,15 @@ import { ProposalDetailResponse } from '@/lib/api/types';
 import { ProposalStatusBadge } from '@/components/proposals/ProposalStatusBadge';
 import { SectionApprovalBadge } from '@/components/proposals/SectionApprovalBadge';
 import { ContentOriginBadge } from '@/components/proposals/ContentOriginBadge';
-import { pendingSectionCount } from '@/lib/proposal-status';
+import { SectionEditor } from '@/components/proposals/SectionEditor';
+import { RegenerateSectionButton } from '@/components/proposals/RegenerateSectionButton';
+import {
+  canEditSection,
+  editInvalidatesApproval,
+  isRegenerableSectionKey,
+  MAX_REGENERATION_ATTEMPTS,
+  pendingSectionCount,
+} from '@/lib/proposal-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +58,8 @@ export default async function ProposalDetailPage({ params }: PageProps) {
 
   const pendingCount = pendingSectionCount(proposal);
   const totalSections = proposal.sections ? proposal.sections.length : 0;
+  const sectionsEditable = canEditSection(proposal);
+  const editWillInvalidateApproval = editInvalidatesApproval(proposal);
 
   return (
     <div className="space-y-8 pb-16">
@@ -100,9 +110,9 @@ export default async function ProposalDetailPage({ params }: PageProps) {
           </svg>
         </div>
         <div className="space-y-1">
-          <div className="font-semibold text-indigo-300">Phase 1 Read-Only Review Active</div>
+          <div className="font-semibold text-indigo-300">Phase 4 Section Regeneration Active</div>
           <div className="text-indigo-300/80 leading-relaxed">
-            This screen displays verified intake facts and proposal template sections. Actions below (Section Editing, AI Regeneration, and Final Approval) will become active sequentially as Phase 3�5 backend endpoints land.
+            Section content is editable in place, and Proposed Solution / Deliverables can be regenerated via Claude with a required instruction (capped at 3 attempts each). Final Approval remains disabled below and will activate once Phase 5 lands.
           </div>
         </div>
       </div>
@@ -268,38 +278,44 @@ export default async function ProposalDetailPage({ params }: PageProps) {
                   </div>
                 </div>
 
-                {/* Section Content */}
-                <div className="text-sm text-zinc-300 leading-relaxed bg-[#090a0f] p-4 rounded-lg border border-[#1e2436] font-normal min-h-[5rem] whitespace-pre-wrap">
-                  {section.content || (
-                    <span className="text-zinc-600 italic">
-                      No content generated yet. Will populate after Claude synthesis.
-                    </span>
-                  )}
-                </div>
+                {/* Section Content (editable in place) */}
+                <SectionEditor
+                  proposalId={proposal.id}
+                  section={section}
+                  editable={sectionsEditable}
+                  invalidatesApproval={editWillInvalidateApproval}
+                />
 
-                {/* Section Footer: Meta & Disabled Action Triggers */}
+                {/* Section Footer: Meta & Action Triggers */}
                 <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-500 border-t border-[#1e2436]/50">
                   <div className="flex items-center gap-3">
                     <span>Version {section.version}</span>
-                    <span>�</span>
-                    <span>
-                      Regenerations: <strong className="text-zinc-400">{section.regeneration_count}/3</strong>
-                    </span>
+                    {isRegenerableSectionKey(section.section_key) ? (
+                      <>
+                        <span>·</span>
+                        <span>
+                          Regenerations:{' '}
+                          <strong className="text-zinc-400">
+                            {section.regeneration_count}/{MAX_REGENERATION_ATTEMPTS}
+                          </strong>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>·</span>
+                        <span className="text-zinc-600">Pinned — not AI-generated</span>
+                      </>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      disabled
-                      className="px-2.5 py-1 rounded bg-zinc-800/50 border border-zinc-700/50 text-zinc-500 text-[11px] font-medium cursor-not-allowed"
-                    >
-                      Edit Content (Phase 3)
-                    </button>
-                    <button
-                      disabled
-                      className="px-2.5 py-1 rounded bg-zinc-800/50 border border-zinc-700/50 text-zinc-500 text-[11px] font-medium cursor-not-allowed"
-                    >
-                      Regenerate (Phase 4)
-                    </button>
+                    {isRegenerableSectionKey(section.section_key) && (
+                      <RegenerateSectionButton
+                        proposalId={proposal.id}
+                        section={section}
+                        editable={sectionsEditable}
+                      />
+                    )}
                     <button
                       disabled
                       className="px-2.5 py-1 rounded bg-zinc-800/50 border border-zinc-700/50 text-zinc-500 text-[11px] font-medium cursor-not-allowed"

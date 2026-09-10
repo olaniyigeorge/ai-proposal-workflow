@@ -30,6 +30,14 @@ export type ContentOrigin =
 
 export type SectionApprovalStatus = 'pending' | 'approved';
 
+export interface RegenerationLogEntry {
+  instruction: string;
+  attempted_at: string;
+  outcome: 'succeeded' | 'failed' | string;
+  resulting_version?: number | null;
+  error?: string | null;
+}
+
 export interface ProposalSectionResponse {
   id: string;
   section_key: SectionKey | string;
@@ -40,6 +48,7 @@ export interface ProposalSectionResponse {
   approval_status: SectionApprovalStatus | string;
   regeneration_count: number;
   version: number;
+  regeneration_log: RegenerationLogEntry[];
   created_at: string;
   updated_at: string;
 }

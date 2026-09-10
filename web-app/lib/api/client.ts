@@ -110,7 +110,41 @@ export async function getProposal(
   });
 }
 
+export async function updateSectionContent(
+  proposalId: string,
+  sectionKey: string,
+  content: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(
+    `/proposals/${proposalId}/sections/${sectionKey}`,
+    {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ content }),
+    }
+  );
+}
+
+export async function regenerateSection(
+  proposalId: string,
+  sectionKey: string,
+  instruction: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(
+    `/proposals/${proposalId}/sections/${sectionKey}/regenerate`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ instruction }),
+    }
+  );
+}
+
 export const api = {
   listProposals,
   getProposal,
+  updateSectionContent,
+  regenerateSection,
 };
