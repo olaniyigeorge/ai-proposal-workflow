@@ -102,20 +102,6 @@ class SectionNotRegenerableError(DomainError):
         )
 
 
-class DocumentAlreadyGeneratedError(DomainError):
-    """Raised when document generation is attempted for a Proposal that
-    already has a DocumentArtifact — the PDF is generated exactly once
-    (CLAUDE.md: "there is no 'draft PDF'"), so a second attempt is rejected
-    rather than silently re-rendering or overwriting.
-    """
-
-    def __init__(self, proposal_id) -> None:
-        self.proposal_id = proposal_id
-        super().__init__(
-            f"Proposal {proposal_id} already has a generated document"
-        )
-
-
 class DocumentNotReadyError(DomainError):
     """Raised when the document/delivery-link is requested before DOCUMENT_READY."""
 
