@@ -1,6 +1,7 @@
 import {
   ProposalDetailResponse,
   ProposalSummaryResponse,
+  ClaudeCallLogResponse,
   ApiError,
 } from './types';
 import { DEV_TOKEN, getClientAuthToken } from '../auth/session';
@@ -142,9 +143,94 @@ export async function regenerateSection(
   );
 }
 
+export async function generateProposal(
+  proposalId: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(`/proposals/${proposalId}/generate`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export async function approveSection(
+  proposalId: string,
+  sectionKey: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(
+    `/proposals/${proposalId}/sections/${sectionKey}/approve`,
+    { method: 'POST', token }
+  );
+}
+
+export async function submitForApproval(
+  proposalId: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(
+    `/proposals/${proposalId}/submit-for-approval`,
+    { method: 'POST', token }
+  );
+}
+
+export async function approveProposal(
+  proposalId: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(`/proposals/${proposalId}/approve`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export async function requestChanges(
+  proposalId: string,
+  reason?: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(
+    `/proposals/${proposalId}/request-changes`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ reason: reason || null }),
+    }
+  );
+}
+
+export async function rejectProposal(
+  proposalId: string,
+  reason?: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(`/proposals/${proposalId}/reject`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ reason: reason || null }),
+  });
+}
+
+export async function getClaudeCalls(
+  proposalId: string,
+  token?: string
+): Promise<ClaudeCallLogResponse[]> {
+  return request<ClaudeCallLogResponse[]>(
+    `/proposals/${proposalId}/claude-calls`,
+    { method: 'GET', token, cache: 'no-store' }
+  );
+}
+
 export const api = {
   listProposals,
   getProposal,
   updateSectionContent,
   regenerateSection,
+  generateProposal,
+  approveSection,
+  submitForApproval,
+  approveProposal,
+  requestChanges,
+  rejectProposal,
+  getClaudeCalls,
 };
