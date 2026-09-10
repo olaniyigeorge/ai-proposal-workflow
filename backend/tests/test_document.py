@@ -16,7 +16,6 @@ import app.services.document_service as document_service
 from app.adapters.pdf_renderer import PdfRenderError, count_pdf_pages, render_pdf
 from app.adapters.storage_client import StorageUploadError
 from app.domain.document import BRAND_NAME, build_document_filename, render_proposal_html
-from app.domain.exceptions import DocumentAlreadyGeneratedError
 from app.domain.proposal_transitions import transition_proposal
 from app.models.document import DocumentArtifact
 from app.models.proposal import (
@@ -198,17 +197,26 @@ async def test_start_document_generation_rejected_outside_approved(db_session, s
 
 
 @pytest.mark.asyncio
-async def test_start_document_generation_rejects_when_already_generated(db_session) -> None:
+async def test_start_document_generation_replaces_stale_artifact_on_reapproval(db_session) -> None:
+    """A proposal edited/regenerated post-approval is forced back to
+    IN_REVIEW (decisions #9) and can be re-approved — at which point the
+    prior DocumentArtifact is stale, not a duplicate of the same approval,
+    so generation must be re-triggerable rather than permanently blocked
+    (decisions #9's follow-up, resolved 2026-09-11).
+    """
     proposal = await _persist(db_session, _make_proposal(ProposalStatus.APPROVED))
-    db_session.add(
-        DocumentArtifact(
-            proposal_id=proposal.id, storage_path="x", file_size_bytes=1, page_count=1
-        )
+    stale = DocumentArtifact(
+        proposal_id=proposal.id, storage_path="x", file_size_bytes=1, page_count=1
     )
+    db_session.add(stale)
     await db_session.commit()
+    stale_id = stale.id
 
-    with pytest.raises(DocumentAlreadyGeneratedError):
-        await document_service.start_document_generation(db_session, proposal)
+    updated = await document_service.start_document_generation(db_session, proposal)
+
+    assert updated.status == ProposalStatus.DOCUMENT_GENERATING
+    remaining = await document_service.get_document_artifact(db_session, proposal.id)
+    assert remaining is None or remaining.id != stale_id
 
 
 @pytest.mark.asyncio
@@ -341,7 +349,11 @@ async def test_generate_document_endpoint_happy_path(
         assert artifact is not None
         assert artifact.page_count >= 1
 
-    # A second attempt must be rejected — generated exactly once.
+    # A second attempt right after is still rejected — but now because the
+    # proposal is DOCUMENT_READY, not APPROVED (InvalidTransitionError), not
+    # because a DocumentArtifact already exists. Re-generation is legitimate
+    # again only after a post-approval edit forces a fresh APPROVED cycle
+    # (see test_start_document_generation_replaces_stale_artifact_on_reapproval).
     second = await async_client.post(
         f"/api/v1/proposals/{proposal_id}/generate-document", headers=AUTH_HEADERS
     )
