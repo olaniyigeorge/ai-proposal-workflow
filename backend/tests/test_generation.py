@@ -11,7 +11,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 import app.services.generation_service as generation_service
-from app.adapters.claude_client import ClaudeGenerationError
+from app.adapters.claude_client import ClaudeCallResult, ClaudeGenerationError
 from app.domain.exceptions import InvalidTransitionError, SectionGenerationError
 from app.domain.generation import assemble_section_content, build_user_prompt
 from app.domain.proposal_transitions import transition_proposal
@@ -25,6 +25,12 @@ from app.models.proposal import (
 )
 from app.services.proposal_service import get_proposal_by_id
 from tests.conftest import TestAsyncSessionLocal
+
+
+def _fake_result(text: str) -> ClaudeCallResult:
+    return ClaudeCallResult(
+        text=text, model="claude-test", input_tokens=10, output_tokens=20, stop_reason="end_turn"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -146,8 +152,8 @@ async def test_generate_all_sections_success_updates_only_generated_sections(
     transition_proposal(proposal, ProposalStatus.GENERATING)
     await db_session.commit()
 
-    async def fake_generate_text(system_prompt: str, user_prompt: str) -> str:
-        return "Generated text."
+    async def fake_generate_text(system_prompt: str, user_prompt: str) -> ClaudeCallResult:
+        return _fake_result("Generated text.")
 
     monkeypatch.setattr(generation_service, "generate_text", fake_generate_text)
 
@@ -222,8 +228,8 @@ async def test_generate_all_sections_can_retry_after_failure(db_session, monkeyp
     result = await generation_service.start_generation(db_session, proposal)
     assert result.status == ProposalStatus.GENERATING
 
-    async def succeeding_generate_text(system_prompt: str, user_prompt: str) -> str:
-        return "Recovered text."
+    async def succeeding_generate_text(system_prompt: str, user_prompt: str) -> ClaudeCallResult:
+        return _fake_result("Recovered text.")
 
     monkeypatch.setattr(generation_service, "generate_text", succeeding_generate_text)
     await generation_service.generate_all_sections(db_session, proposal)
@@ -276,8 +282,8 @@ async def test_generate_endpoint_happy_path(
 ) -> None:
     monkeypatch.setattr(generation_service, "AsyncSessionLocal", TestAsyncSessionLocal)
 
-    async def fake_generate_text(system_prompt: str, user_prompt: str) -> str:
-        return "Generated section text."
+    async def fake_generate_text(system_prompt: str, user_prompt: str) -> ClaudeCallResult:
+        return _fake_result("Generated section text.")
 
     monkeypatch.setattr(generation_service, "generate_text", fake_generate_text)
 
@@ -320,8 +326,8 @@ async def test_generate_endpoint_allows_rerun_while_in_review(
     endpoint must allow a second call, not reject it."""
     monkeypatch.setattr(generation_service, "AsyncSessionLocal", TestAsyncSessionLocal)
 
-    async def fake_generate_text(system_prompt: str, user_prompt: str) -> str:
-        return "text"
+    async def fake_generate_text(system_prompt: str, user_prompt: str) -> ClaudeCallResult:
+        return _fake_result("text")
 
     monkeypatch.setattr(generation_service, "generate_text", fake_generate_text)
 
