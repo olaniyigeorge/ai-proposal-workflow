@@ -101,6 +101,30 @@ export interface ClaudeCallLogResponse {
   created_at: string;
 }
 
+export interface DocumentArtifactResponse {
+  id: string;
+  file_size_bytes: number;
+  page_count: number;
+  created_at: string;
+  download_url: string;
+}
+
+export interface DeliveryDraftResponse {
+  subject: string;
+  body: string;
+  recipient_email: string;
+}
+
+export interface DeliveryRecordResponse {
+  id: string;
+  status: 'sent' | 'failed' | 'bounced' | string;
+  recipient_email: string;
+  subject: string;
+  sent_at?: string | null;
+  error_message?: string | null;
+  created_at: string;
+}
+
 export interface ApiErrorDetail {
   code?: string;
   message: string;

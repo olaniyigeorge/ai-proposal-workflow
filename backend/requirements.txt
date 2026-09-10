@@ -55,3 +55,15 @@ websockets==15.0.1
 yarl==1.24.5
 email-validator>=2.0.0
 anthropic>=1.0.0
+weasyprint==70.0
+pypdf==6.18.0
+brotli==1.2.0
+cssselect2==0.10.1
+fonttools==4.65.0
+pillow==12.3.0
+pydyf==0.12.1
+pyphen==0.18.1
+tinycss2==1.5.1
+tinyhtml5==2.1.0
+webencodings==0.6.1
+zopfli==0.4.3

@@ -12,11 +12,19 @@ import { GenerateProposalButton } from '@/components/proposals/GenerateProposalB
 import { ApproveSectionButton } from '@/components/proposals/ApproveSectionButton';
 import { ApprovalPanel } from '@/components/proposals/ApprovalPanel';
 import { ClaudeCallLogPanel } from '@/components/proposals/ClaudeCallLogPanel';
+import { GenerateDocumentButton } from '@/components/proposals/GenerateDocumentButton';
+import { DocumentPreview } from '@/components/proposals/DocumentPreview';
+import { DeliveryPanel } from '@/components/proposals/DeliveryPanel';
 import {
   canApproveSection,
+  canDeliver,
   canEditSection,
+  canGenerateDocument,
   canTriggerGeneration,
+  deliveryInProgress,
+  documentIsReady,
   editInvalidatesApproval,
+  isDelivered,
   isRegenerableSectionKey,
   MAX_REGENERATION_ATTEMPTS,
   pendingSectionCount,
@@ -68,9 +76,14 @@ export default async function ProposalDetailPage({ params }: PageProps) {
   const editWillInvalidateApproval = editInvalidatesApproval(proposal);
   const sectionsApprovable = canApproveSection(proposal);
   const needsGeneration = canTriggerGeneration(proposal);
+  const needsDocumentGeneration = canGenerateDocument(proposal);
+  const documentReady = documentIsReady(proposal);
+  const deliveryAllowed = canDeliver(proposal);
+  const deliveryInFlight = deliveryInProgress(proposal);
+  const deliveryDone = isDelivered(proposal);
 
   return (
-    <div className="space-y-8 pb-16">
+    <div className="space-y-8 pb-16 animate-fade-in-up">
       {/* Navigation & Header */}
       <div className="space-y-4">
         <Link
@@ -118,9 +131,9 @@ export default async function ProposalDetailPage({ params }: PageProps) {
           </svg>
         </div>
         <div className="space-y-1">
-          <div className="font-semibold text-indigo-300">Phase 5 Approval Workflow Active</div>
+          <div className="font-semibold text-indigo-300">Phase 7 Client Delivery Active</div>
           <div className="text-indigo-300/80 leading-relaxed">
-            Sections can be edited, regenerated, and approved individually. Submit for approval or approve the entire proposal from the panel on the left. Document generation (Phase 6) and delivery (Phase 7) are next.
+            Once the branded PDF is ready, review the composed email draft and send it to the client from the panel on the left — email only, with a link (never an attachment), and no auto-send.
           </div>
         </div>
       </div>
@@ -224,27 +237,31 @@ export default async function ProposalDetailPage({ params }: PageProps) {
                 </>
               )}
 
-              {/* Generate PDF Button (Disabled) */}
-              <button
-                disabled
-                className="w-full py-2.5 px-4 rounded-lg bg-zinc-800/40 border border-zinc-700/40 text-zinc-500 font-medium text-xs flex items-center justify-between cursor-not-allowed"
-              >
-                <span>Generate PDF Document</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                  Phase 6
-                </span>
-              </button>
+              {/* Document Generation (Phase 6) */}
+              {documentReady ? (
+                <DocumentPreview proposalId={proposal.id} />
+              ) : needsDocumentGeneration ? (
+                <GenerateDocumentButton proposalId={proposal.id} status={proposal.status} />
+              ) : (
+                <button
+                  disabled
+                  className="w-full py-2.5 px-4 rounded-lg bg-zinc-800/40 border border-zinc-700/40 text-zinc-500 font-medium text-xs flex items-center justify-between cursor-not-allowed"
+                >
+                  <span>Generate PDF Document</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                    Requires Approval
+                  </span>
+                </button>
+              )}
 
-              {/* Deliver to Client Button (Disabled) */}
-              <button
-                disabled
-                className="w-full py-2.5 px-4 rounded-lg bg-zinc-800/40 border border-zinc-700/40 text-zinc-500 font-medium text-xs flex items-center justify-between cursor-not-allowed"
-              >
-                <span>Send PDF to Client</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                  Phase 7
-                </span>
-              </button>
+              {/* Client Delivery (Phase 7) */}
+              <DeliveryPanel
+                proposalId={proposal.id}
+                status={proposal.status}
+                canDeliver={deliveryAllowed}
+                inProgress={deliveryInFlight}
+                isDelivered={deliveryDone}
+              />
             </div>
           </div>
         </div>
@@ -261,10 +278,11 @@ export default async function ProposalDetailPage({ params }: PageProps) {
           </div>
 
           <div className="space-y-5">
-            {proposal.sections?.map((section) => (
+            {proposal.sections?.map((section, index) => (
               <div
                 key={section.id}
-                className="rounded-xl border border-[#1e2436] bg-[#121520] p-6 space-y-4 shadow-lg shadow-black/20 hover:border-[#2e3752] transition-colors"
+                className="rounded-xl border border-[#1e2436] bg-[#121520] p-6 space-y-4 shadow-lg shadow-black/20 hover:border-[#2e3752] hover:-translate-y-0.5 hover:shadow-xl transition-all duration-200 animate-fade-in-up"
+                style={{ animationDelay: `${Math.min(index * 60, 300)}ms` }}
               >
                 {/* Section Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#1e2436]">

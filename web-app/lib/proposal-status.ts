@@ -228,11 +228,17 @@ export function editInvalidatesApproval(proposal: ProposalDetailResponse): boole
   return proposal.status === 'PENDING_APPROVAL' || proposal.status === 'APPROVED';
 }
 
-// Only these two sections have any AI-generated content at all (see
-// backend/app/domain/generation.py GENERATED_SECTION_KEYS) — Introduction,
-// Timeline, Pricing, and Next Steps are pinned facts/boilerplate with
-// nothing for Claude to regenerate.
-export const GENERATED_SECTION_KEYS: SectionKey[] = ['proposed_solution', 'deliverables'];
+// Only these sections have any AI-generated content at all (see
+// backend/app/domain/generation.py GENERATED_SECTION_KEYS) — Timeline,
+// Pricing, and Next Steps are pinned facts/boilerplate with nothing for
+// Claude to regenerate. Introduction is generated (not pinned) specifically
+// so the client's raw intake wording gets paraphrased/cleaned up rather than
+// reaching the client verbatim — see docs/edge-cases.md.
+export const GENERATED_SECTION_KEYS: SectionKey[] = [
+  'introduction',
+  'proposed_solution',
+  'deliverables',
+];
 
 export const MAX_REGENERATION_ATTEMPTS = 3;
 
@@ -271,4 +277,32 @@ export function canRequestChangesOrReject(proposal: ProposalDetailResponse): boo
 
 export function canTriggerGeneration(proposal: ProposalDetailResponse): boolean {
   return proposal.status === 'DRAFT' || proposal.status === 'GENERATION_FAILED';
+}
+
+export function canGenerateDocument(proposal: ProposalDetailResponse): boolean {
+  return (
+    proposal.status === 'APPROVED' || proposal.status === 'DOCUMENT_GENERATION_FAILED'
+  );
+}
+
+export function documentIsReady(proposal: ProposalDetailResponse): boolean {
+  return (
+    proposal.status === 'DOCUMENT_READY' ||
+    proposal.status === 'DELIVERING' ||
+    proposal.status === 'DELIVERY_FAILED' ||
+    proposal.status === 'DELIVERED' ||
+    proposal.status === 'CLOSED'
+  );
+}
+
+export function canDeliver(proposal: ProposalDetailResponse): boolean {
+  return proposal.status === 'DOCUMENT_READY' || proposal.status === 'DELIVERY_FAILED';
+}
+
+export function deliveryInProgress(proposal: ProposalDetailResponse): boolean {
+  return proposal.status === 'DELIVERING';
+}
+
+export function isDelivered(proposal: ProposalDetailResponse): boolean {
+  return proposal.status === 'DELIVERED' || proposal.status === 'CLOSED';
 }

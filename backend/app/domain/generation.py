@@ -4,18 +4,30 @@ that are not pure pinned-fact passthroughs. Pure domain logic: no I/O, no
 anthropic import (that lives in adapters/claude_client.py).
 
 Per `docs/reference/proposal-template.md` (the actual reference template —
-see `docs/intake-schema.md` "Proposal sections"), only **two** of the six
-template sections require an actual generation call. Introduction is fixed
-boilerplate wrapping two pinned facts verbatim — the template has no
-generated placeholder in it at all — so intake_service.py assembles it
-directly at intake time, same as Timeline/Pricing/Next Steps:
+see `docs/intake-schema.md` "Proposal sections"), three of the six template
+sections require an actual generation call:
 
-  1. Introduction          — pinned only, assembled at intake (no Claude call)
+  1. Introduction          — generated: paraphrases `client_needs_summary` +
+                              `goals_and_objectives` into clean, professional
+                              prose rather than quoting the client's raw
+                              intake answers verbatim (see below)
   2. Proposed Solution     — `project_scope` verbatim + generated `recommended_approach`
   3. Deliverables          — generated from `recommended_services`
   4. Timeline              — pinned verbatim (no generation)
   5. Pricing               — pinned verbatim (no generation)
   6. Next Steps            — static boilerplate (no generation)
+
+**Introduction was pinned-only until 2026-09-10** (client_needs_summary and
+goals_and_objectives inserted verbatim into the reference template's fixed
+frame — see docs/edge-cases.md "Generated sections run long" for the
+original reasoning: zero hallucination risk, one fewer Claude call). That
+traded away too much: a client's raw form answers can carry bad grammar,
+run-on phrasing, or unclear wording, and that went straight into a
+client-facing document unedited. Introduction is now generated like Proposed
+Solution/Deliverables, with an explicit instruction to paraphrase — not
+invent — so wording gets cleaned up without the model adding needs, goals,
+or commitments the client never stated. See docs/edge-cases.md "Client's raw
+intake wording reached the client verbatim via the pinned Introduction".
 
 Word-count targets below are read directly off the reference template's own
 prose (each templated section is a sentence or two of boilerplate around the
@@ -28,16 +40,16 @@ suffers").
 from app.models.proposal import Proposal, SectionKey
 
 # Sections a full-generation job must call Claude for. Every other SectionKey
-# keeps the template_default content intake_service.py already wrote —
-# Introduction included, now that it's pinned-only (no free generation).
+# keeps the template_default content intake_service.py already wrote.
 GENERATED_SECTION_KEYS: frozenset[SectionKey] = frozenset(
-    {SectionKey.PROPOSED_SOLUTION, SectionKey.DELIVERABLES}
+    {SectionKey.INTRODUCTION, SectionKey.PROPOSED_SOLUTION, SectionKey.DELIVERABLES}
 )
 
 # Word targets per generated section — deliberately tight, matching the
 # reference template's own brevity (a client skims a proposal; padding costs
 # edit time later, not less). Passed into the prompt as explicit guidance.
 WORD_TARGETS: dict[SectionKey, str] = {
+    SectionKey.INTRODUCTION: "60-100 words",
     SectionKey.PROPOSED_SOLUTION: "120-200 words",
     SectionKey.DELIVERABLES: "60-120 words",
 }
@@ -94,6 +106,19 @@ def build_system_prompt() -> str:
 
 
 def _section_task_description(section_key: SectionKey, word_target: str) -> str:
+    if section_key == SectionKey.INTRODUCTION:
+        return (
+            "Write the Introduction section: thank the client for their time "
+            "and introduce this proposal, then summarize their stated needs "
+            "(\"Client's stated needs\" below) and goals (\"Goals and "
+            "objectives\" below) in clear, professional prose. The client's "
+            "own wording may be informal, ungrammatical, or unclear — "
+            "paraphrase it into clean prose rather than quoting it verbatim, "
+            "correcting grammar and phrasing as you go. Do not add any need, "
+            "goal, or commitment beyond what is stated in those two facts — "
+            f"paraphrasing wording is in scope, inventing content is not. "
+            f"Target length: {word_target}."
+        )
     if section_key == SectionKey.PROPOSED_SOLUTION:
         return (
             "Write the 'recommended approach' narrative for the Proposed "
@@ -180,11 +205,20 @@ def build_regeneration_prompt(
 
 
 def pinned_prefix_for_section(proposal: Proposal, section_key: SectionKey) -> str:
-    """The verbatim pinned-fact prefix a generated section's final content is
-    built on top of. Single source of truth shared by intake_service.py
-    (first assembly) and services/regeneration_service.py (every
-    regeneration) so the two can never drift apart on the exact wording.
+    """For PROPOSED_SOLUTION, the verbatim pinned prefix its final content is
+    built on top of (see assemble_section_content). For INTRODUCTION and
+    DELIVERABLES, which are pure generated content with no pinned prefix in
+    the final output, this instead supplies the pre-generation placeholder
+    shown in the section before Generate is first clicked — the client's raw
+    answers, visible but not yet paraphrased. Single source of truth shared
+    by intake_service.py (first assembly) and services/regeneration_service.py
+    (every regeneration) so the two can never drift apart on the exact wording.
     """
+    if section_key == SectionKey.INTRODUCTION:
+        return (
+            f"Needs: {proposal.client_needs_summary}\n"
+            f"Goals: {proposal.goals_and_objectives}"
+        )
     if section_key == SectionKey.PROPOSED_SOLUTION:
         return f"Scope:\n{proposal.project_scope}"
     if section_key == SectionKey.DELIVERABLES:
@@ -196,7 +230,9 @@ def assemble_section_content(section_key: SectionKey, pinned_content: str, gener
     """Combine a section's pinned/verbatim prefix (if any) with Claude's
     generated text. Only PROPOSED_SOLUTION has a pinned prefix (`project_scope`
     verbatim) that must survive alongside the generated `recommended_approach`
-    — deliverables is pure generated content.
+    — Introduction and Deliverables are pure generated content (their
+    pinned_content argument is the pre-generation placeholder only, not part
+    of the final assembled section).
     """
     generated_text = generated_text.strip()
     if section_key == SectionKey.PROPOSED_SOLUTION:

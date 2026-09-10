@@ -24,6 +24,16 @@ Reference source: PRD "Proposal Intake Fields" + reference Google Form (`https:/
 
 `intake_key = hash(company_name + normalize(project_scope) + respondent_email)` — computed by FastAPI (`compute_intake_key` in `intake_service.py`) from three canonical fields, **not** `timestamp`. `normalize()` lowercases, trims, collapses internal whitespace, and strips trailing punctuation so re-typed casing/spacing doesn't fork the key. Enforced as a DB unique constraint on `IntakeSubmission`; `POST /intake` is an upsert (return the existing `Proposal` id on conflict) so both n8n retries *and* a salesperson resubmitting the same form are safe no-ops. Supersedes the original `hash(timestamp + email_address)` scheme, which only caught the former. See `decisions.md` #4 and `edge-cases.md` "Duplicate intake beyond webhook retries".
 
+## Schema drift (form/Sheet changing out from under n8n's mapping)
+
+This file is the source of truth and must be updated *first* whenever a Google Form question changes — before touching the n8n Code node, before assuming FastAPI's Pydantic model needs to change. Three drift shapes, in order of how detectable they are:
+
+- **A required field is renamed/removed on the form** → the Sheet column n8n's Code node looks for disappears → FastAPI 422s (correct, by design). Today nothing in n8n routes that failure anywhere — see `edge-cases.md` "No error path when the Google Form drifts out of sync with the canonical intake schema" for the planned n8n error branch (dead-letter Sheet tab or alert on non-2xx from `POST /intake`).
+- **A new field is added to the form** → silently dropped by n8n's Code node until someone updates the mapping. Not detectable by any schema check; the new data simply never arrives. Process fix only (update this doc → n8n mapping → confirm against Pydantic), no code catches this.
+- **A question's wording changes but the column header/canonical key doesn't** → completely undetectable technically; a semantic drift, not a structural one. Same process fix as above.
+
+None of this is automatable away — FastAPI's 422 is the only structural backstop (decisions #5), and it only catches the first shape.
+
 ## Template ≠ intake fields (must reconcile)
 
 The reference proposal template uses two placeholders that do **not** exist in the intake schema:
@@ -33,20 +43,22 @@ The reference proposal template uses two placeholders that do **not** exist in t
 | `{{recommended_approach}}` | `recommended_services` (+ `project_scope` for context) | Claude-synthesized narrative, not passed through verbatim — this is *generated* content, not a canonical fact. |
 | `{{deliverables}}` | `recommended_services` | Same — the sheet folds "Deliverables" into one column with services; Claude needs to separate/expand it into a deliverables list for this section. |
 
-Everything else in the template (`{{client_name}}`, `{{company_name}}`, `{{date_of_call}}`, `{{salesperson_name}}`, `{{client_needs_summary}}`, `{{project_scope}}`, `{{goals_and_objectives}}`, `{{proposed_timeline}}`, `{{estimated_pricing}}`) maps directly to a canonical intake field and should be treated as a **pinned fact** the generation prompt is constrained to reproduce verbatim (per `architecture.md` §4, item 4) — never left to the model to paraphrase.
+Most of the rest of the template (`{{client_name}}`, `{{company_name}}`, `{{date_of_call}}`, `{{project_scope}}` in Proposed Solution, `{{proposed_timeline}}`, `{{estimated_pricing}}`) maps directly to a canonical intake field and is a **pinned fact** the generation prompt is constrained to reproduce verbatim (per `architecture.md` §4, item 4) — never left to the model to paraphrase, since these are exactly the numbers/dates/identifiers where drift would be a real business risk.
+
+**`{{client_needs_summary}}` and `{{goals_and_objectives}}` are the one deliberate exception** (revised 2026-09-10 — see `edge-cases.md` "Client's raw intake wording reached the client verbatim via the pinned Introduction"): these are free-text narrative, not facts with a single correct value, and the client's own form-answer wording can carry bad grammar or unclear phrasing that shouldn't reach a client-facing document unedited. Introduction is generated (not pinned) specifically so Claude paraphrases these two fields into clean prose — explicitly instructed to paraphrase wording, never invent a need/goal the client didn't state.
 
 ## Proposal sections (from the reference template)
 
-Informs decisions #8 — six sections, fixed order. Reference template now on disk at `docs/reference/proposal-template.md` — read it before touching generation prompts, since it settles exactly which sections are generated vs. pinned-only (Introduction has **no** generated placeholder at all, unlike what an earlier draft of this doc assumed):
+Informs decisions #8 — six sections, fixed order. Reference template now on disk at `docs/reference/proposal-template.md` — read it before touching generation prompts, since it settles exactly which sections are generated vs. pinned-only:
 
-1. Introduction (pinned only — boilerplate wraps `client_needs_summary` + `goals_and_objectives` verbatim; assembled at intake, never calls Claude)
+1. Introduction (generated — paraphrases `client_needs_summary` + `goals_and_objectives` into clean prose rather than quoting them verbatim; see the note above and `edge-cases.md`)
 2. Proposed Solution (contains `project_scope` verbatim + generated `recommended_approach`)
 3. Deliverables (generated from `recommended_services`)
 4. Timeline (`proposed_timeline` verbatim)
 5. Pricing (`estimated_pricing` verbatim)
 6. Next Steps (static boilerplate — no per-proposal generation)
 
-Only **Proposed Solution** and **Deliverables** ever call Claude (`GENERATED_SECTION_KEYS` in `backend/app/domain/generation.py`).
+**Introduction**, **Proposed Solution**, and **Deliverables** call Claude (`GENERATED_SECTION_KEYS` in `backend/app/domain/generation.py`).
 
 ## Generated-section length targets
 
@@ -54,13 +66,13 @@ Set against `docs/reference/proposal-template.md` and `docs/reference/client-ema
 
 | Section | Target length | Notes |
 |---|---|---|
-| Introduction | n/a — not generated | Pure boilerplate + verbatim facts, assembled at intake (see "Proposal sections" above — the template has no generated placeholder here at all). No word target needed since nothing is free-generated; total length is whatever `client_needs_summary`/`goals_and_objectives` run to plus ~45 words of fixed frame. |
+| Introduction | 60–100 words | Generated: thanks the client, then paraphrases `client_needs_summary`/`goals_and_objectives` into clean prose (not a verbatim quote of the client's own wording — see the note above). No pinned prefix survives into the final section text. |
 | Proposed Solution | 120–200 words (generated portion only) | `project_scope` verbatim goes in above this (adds its own length on top, depending on the intake answer); the generated `recommended_approach` is 1-2 tight paragraphs, not a brainstorm dump. |
 | Deliverables | 60–120 words | Short list, one line per deliverable. `recommended_services` expanded/formatted here — if it's already a clean list, generation just formats it, it doesn't inflate it. |
 | Timeline | n/a — not generated | `proposed_timeline` verbatim, no generation. |
 | Pricing | n/a — not generated | `estimated_pricing` verbatim, no generation. |
 | Next Steps | n/a — not generated | Static boilerplate. |
 
-A full proposal's total length is dominated by how long the intake answers are (`project_scope`, `client_needs_summary`, etc., all pinned verbatim) plus ~230 words of fixed template frame — the only content this project's own prompting controls is the two generated pieces above, so that's what the word targets constrain.
+A full proposal's total length is dominated by how long the pinned-verbatim intake answers are (`project_scope`, `proposed_timeline`, `estimated_pricing`) plus ~180 words of fixed template frame — the content this project's own prompting controls is the three generated sections above, so that's what the word targets constrain.
 
 Practical check: if a generated piece comes back well over target, the regenerate instruction can be "shorten to ~150 words, keep all facts" — cheaper than editing a wall of text by hand. The UI word-count badge (still open, see `docs/edge-cases.md`) makes the over-length sections visible at a glance so the salesperson knows where to spend edit time.

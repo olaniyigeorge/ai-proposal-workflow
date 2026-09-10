@@ -146,10 +146,11 @@ export function ProposalList({ initialProposals }: ProposalListProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1e2436] text-sm">
-                {filteredProposals.map((proposal) => (
+                {filteredProposals.map((proposal, index) => (
                   <tr
                     key={proposal.id}
-                    className="hover:bg-[#171b29] transition-colors group"
+                    className="hover:bg-[#171b29] transition-colors group animate-fade-in"
+                    style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
                   >
                     <td className="py-4 px-4 sm:px-6">
                       <Link

@@ -82,17 +82,18 @@ async def process_intake(
     db.add(proposal)
     await db.flush()
 
-    introduction_content = (
-        f"Thank you for taking the time to speak with us. Based on our recent "
-        f"conversation, we have put together this customized proposal to help "
-        f"{payload.company_name} address the following needs:\n\n"
-        f"{payload.client_needs_summary}\n\n"
-        f"We are excited about the opportunity to support you and believe "
-        f"this solution will help {payload.goals_and_objectives}."
-    )
-
     sections_defs = [
-        (SectionKey.INTRODUCTION, "Introduction", 0, introduction_content),
+        (
+            SectionKey.INTRODUCTION,
+            "Introduction",
+            0,
+            # Pre-generation placeholder only — the client's raw needs/goals
+            # wording, not final content. The final Introduction is written
+            # by Claude (GENERATED_SECTION_KEYS) precisely so grammar/clarity
+            # issues in the client's own words don't reach the client
+            # verbatim (see docs/edge-cases.md).
+            pinned_prefix_for_section(proposal, SectionKey.INTRODUCTION),
+        ),
         (
             SectionKey.PROPOSED_SOLUTION,
             "Proposed Solution",

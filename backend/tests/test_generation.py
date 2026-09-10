@@ -75,6 +75,22 @@ def test_assemble_section_content_is_pure_generated_for_deliverables() -> None:
     )
 
 
+def test_assemble_section_content_is_pure_generated_for_introduction() -> None:
+    assert (
+        assemble_section_content(SectionKey.INTRODUCTION, "Needs: x\nGoals: y", "  Thanks.  ")
+        == "Thanks."
+    )
+
+
+def test_build_user_prompt_for_introduction_instructs_paraphrase_not_invention() -> None:
+    proposal = make_proposal()
+    prompt = build_user_prompt(proposal, SectionKey.INTRODUCTION)
+    assert "paraphrase" in prompt.lower()
+    assert "do not add any need" in prompt.lower()
+    assert "Client's stated needs: needs" in prompt
+    assert "Goals and objectives: goals" in prompt
+
+
 # ---------------------------------------------------------------------------
 # Service-level tests — real (in-memory) DB session, Claude call monkeypatched.
 # ---------------------------------------------------------------------------
@@ -83,7 +99,7 @@ def test_assemble_section_content_is_pure_generated_for_deliverables() -> None:
 def _make_full_proposal() -> Proposal:
     proposal = make_proposal()
     sections_defs = [
-        (SectionKey.INTRODUCTION, "Introduction", 0, ""),
+        (SectionKey.INTRODUCTION, "Introduction", 0, "Needs: needs\nGoals: goals"),
         (SectionKey.PROPOSED_SOLUTION, "Proposed Solution", 1, "Scope:\nBuild a widget factory"),
         (SectionKey.DELIVERABLES, "Deliverables", 2, "Services & Deliverables:\nservices"),
         (SectionKey.TIMELINE, "Timeline", 3, "timeline"),
@@ -162,6 +178,9 @@ async def test_generate_all_sections_success_updates_only_generated_sections(
     assert proposal.status == ProposalStatus.IN_REVIEW
     by_key = {s.section_key: s for s in proposal.sections}
 
+    assert by_key[SectionKey.INTRODUCTION].content == "Generated text."
+    assert by_key[SectionKey.INTRODUCTION].content_origin == ContentOrigin.AI_GENERATED
+
     assert by_key[SectionKey.PROPOSED_SOLUTION].content == (
         "Scope:\nBuild a widget factory\n\nGenerated text."
     )
@@ -171,11 +190,7 @@ async def test_generate_all_sections_success_updates_only_generated_sections(
     assert by_key[SectionKey.DELIVERABLES].content_origin == ContentOrigin.AI_GENERATED
 
     # Sibling sections never touched by generation — content, version, and
-    # origin flag must remain exactly as intake wrote them. Introduction is a
-    # sibling now too: the reference template has no generated placeholder in
-    # it, so it's assembled once at intake and never calls Claude.
-    assert by_key[SectionKey.INTRODUCTION].content == ""
-    assert by_key[SectionKey.INTRODUCTION].content_origin == ContentOrigin.TEMPLATE_DEFAULT
+    # origin flag must remain exactly as intake wrote them.
     assert by_key[SectionKey.TIMELINE].content == "timeline"
     assert by_key[SectionKey.TIMELINE].content_origin == ContentOrigin.TEMPLATE_DEFAULT
     assert by_key[SectionKey.TIMELINE].version == 1
@@ -306,10 +321,10 @@ async def test_generate_endpoint_happy_path(
     detail = detail_resp.json()
     assert detail["status"] == "IN_REVIEW"
     sections = {s["section_key"]: s for s in detail["sections"]}
-    # Introduction has no generated placeholder in the reference template —
-    # it's pinned boilerplate assembled at intake, never touched by Claude.
-    assert sections["introduction"]["content_origin"] == "template_default"
-    assert "needs widgets" in sections["introduction"]["content"]
+    # Introduction is generated too (as of 2026-09-10) — it must not be left
+    # as the raw pre-generation placeholder of the client's unedited wording.
+    assert sections["introduction"]["content_origin"] == "ai_generated"
+    assert sections["introduction"]["content"] == "Generated section text."
     assert sections["deliverables"]["content"] == "Generated section text."
     assert sections["deliverables"]["content_origin"] == "ai_generated"
     assert "Build a widget factory" in sections["proposed_solution"]["content"]

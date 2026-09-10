@@ -2,6 +2,9 @@ import {
   ProposalDetailResponse,
   ProposalSummaryResponse,
   ClaudeCallLogResponse,
+  DocumentArtifactResponse,
+  DeliveryDraftResponse,
+  DeliveryRecordResponse,
   ApiError,
 } from './types';
 import { DEV_TOKEN, getClientAuthToken } from '../auth/session';
@@ -221,6 +224,59 @@ export async function getClaudeCalls(
   );
 }
 
+export async function generateDocument(
+  proposalId: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(
+    `/proposals/${proposalId}/generate-document`,
+    { method: 'POST', token }
+  );
+}
+
+export async function getDocument(
+  proposalId: string,
+  token?: string
+): Promise<DocumentArtifactResponse> {
+  return request<DocumentArtifactResponse>(`/proposals/${proposalId}/document`, {
+    method: 'GET',
+    token,
+    cache: 'no-store',
+  });
+}
+
+export async function getDeliveryDraft(
+  proposalId: string,
+  token?: string
+): Promise<DeliveryDraftResponse> {
+  return request<DeliveryDraftResponse>(`/proposals/${proposalId}/delivery-draft`, {
+    method: 'GET',
+    token,
+    cache: 'no-store',
+  });
+}
+
+export async function deliverProposal(
+  proposalId: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(`/proposals/${proposalId}/deliver`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export async function getDeliveryRecords(
+  proposalId: string,
+  token?: string
+): Promise<DeliveryRecordResponse[]> {
+  return request<DeliveryRecordResponse[]>(`/proposals/${proposalId}/delivery`, {
+    method: 'GET',
+    token,
+    cache: 'no-store',
+  });
+}
+
 export const api = {
   listProposals,
   getProposal,
@@ -233,4 +289,9 @@ export const api = {
   requestChanges,
   rejectProposal,
   getClaudeCalls,
+  generateDocument,
+  getDocument,
+  getDeliveryDraft,
+  deliverProposal,
+  getDeliveryRecords,
 };

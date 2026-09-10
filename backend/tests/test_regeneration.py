@@ -47,7 +47,8 @@ def _fake_result(text: str) -> ClaudeCallResult:
 
 
 @pytest.mark.parametrize(
-    "section_key", [SectionKey.PROPOSED_SOLUTION, SectionKey.DELIVERABLES]
+    "section_key",
+    [SectionKey.INTRODUCTION, SectionKey.PROPOSED_SOLUTION, SectionKey.DELIVERABLES],
 )
 def test_generated_sections_are_regenerable(section_key) -> None:
     assert_section_is_regenerable(section_key)  # does not raise
@@ -56,7 +57,6 @@ def test_generated_sections_are_regenerable(section_key) -> None:
 @pytest.mark.parametrize(
     "section_key",
     [
-        SectionKey.INTRODUCTION,
         SectionKey.TIMELINE,
         SectionKey.PRICING,
         SectionKey.NEXT_STEPS,
