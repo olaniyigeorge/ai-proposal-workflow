@@ -1,5 +1,6 @@
 import time
 import uuid
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +15,10 @@ from app.domain.generation import (
     build_user_prompt,
 )
 from app.domain.proposal_transitions import transition_proposal
+from app.models.activity_log import ActivityEventType
 from app.models.claude_call_log import ClaudeCallStatus, ClaudeCallType
 from app.models.proposal import ContentOrigin, Proposal, ProposalStatus
+from app.services.activity_log_service import record_activity
 from app.services.claude_log_service import record_claude_call
 from app.services.proposal_service import get_proposal_by_id
 
@@ -38,7 +41,9 @@ async def start_generation(db: AsyncSession, proposal: Proposal) -> Proposal:
     return proposal
 
 
-async def generate_all_sections(db: AsyncSession, proposal: Proposal) -> None:
+async def generate_all_sections(
+    db: AsyncSession, proposal: Proposal, actor: Optional[str] = None
+) -> None:
     """Call Claude for every section that needs generation, then transition
     the Proposal to IN_REVIEW — or to GENERATION_FAILED if any call fails.
 
@@ -92,8 +97,23 @@ async def generate_all_sections(db: AsyncSession, proposal: Proposal) -> None:
                 section_key, section.content, result.text
             )
     except SectionGenerationError as exc:
-        logger.warning("Generation failed for proposal %s: %s", proposal.id, exc)
+        # BACKGROUND_JOB_FAILED: greppable tag (Phase 9 hardening) so a
+        # log-based monitor can alert on any failed background job the same
+        # way INTAKE_SCHEMA_DRIFT does for intake — see app/main.py.
+        logger.warning(
+            "BACKGROUND_JOB_FAILED job=generation proposal=%s error=%s",
+            proposal.id,
+            exc,
+        )
         transition_proposal(proposal, ProposalStatus.GENERATION_FAILED)
+        record_activity(
+            db,
+            proposal_id=proposal.id,
+            event_type=ActivityEventType.GENERATION_FAILED,
+            description=f"Full-proposal generation failed: {exc}",
+            actor=actor,
+            metadata={"error": str(exc)},
+        )
         await db.commit()
         return
 
@@ -103,13 +123,23 @@ async def generate_all_sections(db: AsyncSession, proposal: Proposal) -> None:
         section.content_origin = ContentOrigin.AI_GENERATED
 
     transition_proposal(proposal, ProposalStatus.IN_REVIEW)
+    record_activity(
+        db,
+        proposal_id=proposal.id,
+        event_type=ActivityEventType.GENERATED,
+        description="Full-proposal generation completed",
+        actor=actor,
+    )
     await db.commit()
 
 
-async def run_generation_job(proposal_id: uuid.UUID) -> None:
+async def run_generation_job(proposal_id: uuid.UUID, actor: Optional[str] = None) -> None:
     """Background-task entry point: owns its own DB session since it runs
     outside the request's session scope (FastAPI BackgroundTasks execute
-    after the response is sent).
+    after the response is sent). `actor` is the salesperson who triggered
+    generation, threaded through from the request so the eventual
+    GENERATED/GENERATION_FAILED activity-log entry still records who asked
+    for it, even though this outcome is only known asynchronously.
     """
     async with AsyncSessionLocal() as db:
         proposal = await get_proposal_by_id(db, proposal_id)
@@ -117,14 +147,21 @@ async def run_generation_job(proposal_id: uuid.UUID) -> None:
             logger.error("Generation job: proposal %s no longer exists", proposal_id)
             return
         try:
-            print("\n ==== GENERATING PROPOSAL ====\n")
-            await generate_all_sections(db, proposal)
+            await generate_all_sections(db, proposal, actor)
         except Exception:
             logger.exception(
-                "Unexpected error during generation for proposal %s", proposal_id
+                "BACKGROUND_JOB_FAILED job=generation proposal=%s unexpected_error=true",
+                proposal_id,
             )
             await db.rollback()
             proposal = await get_proposal_by_id(db, proposal_id)
             if proposal is not None and proposal.status == ProposalStatus.GENERATING:
                 transition_proposal(proposal, ProposalStatus.GENERATION_FAILED)
+                record_activity(
+                    db,
+                    proposal_id=proposal.id,
+                    event_type=ActivityEventType.GENERATION_FAILED,
+                    description="Full-proposal generation failed: unexpected error",
+                    actor=actor,
+                )
                 await db.commit()

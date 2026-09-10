@@ -1,3 +1,4 @@
+from app.models.activity_log import ActivityEventType, ActivityLogEntry
 from app.models.base import Base, TimestampMixin
 from app.models.claude_call_log import ClaudeCallLog, ClaudeCallStatus, ClaudeCallType
 from app.models.delivery import DeliveryRecord, DeliveryStatus
@@ -28,4 +29,6 @@ __all__ = [
     "DocumentArtifact",
     "DeliveryRecord",
     "DeliveryStatus",
+    "ActivityLogEntry",
+    "ActivityEventType",
 ]

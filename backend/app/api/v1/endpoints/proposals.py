@@ -19,6 +19,7 @@ from app.domain.exceptions import (
     SectionNotRegenerableError,
 )
 from app.models.proposal import SectionKey
+from app.schemas.activity import ActivityLogEntryResponse
 from app.schemas.claude_log import ClaudeCallLogResponse
 from app.schemas.delivery import DeliveryDraftResponse, DeliveryRecordResponse
 from app.schemas.document import DocumentArtifactResponse
@@ -30,6 +31,7 @@ from app.schemas.proposal import (
     SectionRegenerateRequest,
     SectionUpdateRequest,
 )
+from app.services.activity_log_service import list_activity_for_proposal
 from app.services.approval_service import (
     approve_entire_proposal,
     approve_section,
@@ -106,7 +108,7 @@ async def generate_proposal(
     proposal_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -125,7 +127,7 @@ async def generate_proposal(
     # Runs after the response is sent — the actual Claude calls never block
     # this request (CLAUDE.md: external calls run as background jobs, never
     # inline in a request handler).
-    background_tasks.add_task(run_generation_job, proposal_id)
+    background_tasks.add_task(run_generation_job, proposal_id, current.email)
 
     return proposal
 
@@ -140,7 +142,7 @@ async def update_section(
     section_key: SectionKey,
     body: SectionUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -150,7 +152,9 @@ async def update_section(
         )
 
     try:
-        proposal = await update_section_content(db, proposal, section_key, body.content)
+        proposal = await update_section_content(
+            db, proposal, section_key, body.content, current.email
+        )
     except SectionNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
@@ -175,7 +179,7 @@ async def regenerate_section(
     body: SectionRegenerateRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -205,7 +209,7 @@ async def regenerate_section(
     # this request (CLAUDE.md: external calls run as background jobs, never
     # inline in a request handler).
     background_tasks.add_task(
-        run_section_regeneration_job, proposal_id, section_key, body.instruction
+        run_section_regeneration_job, proposal_id, section_key, body.instruction, current.email
     )
 
     return proposal
@@ -239,7 +243,7 @@ async def approve_section_endpoint(
     proposal_id: uuid.UUID,
     section_key: SectionKey,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -249,7 +253,7 @@ async def approve_section_endpoint(
         )
 
     try:
-        proposal = await approve_section(db, proposal, section_key)
+        proposal = await approve_section(db, proposal, section_key, current.email)
     except SectionNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
@@ -270,7 +274,7 @@ async def approve_section_endpoint(
 async def submit_for_approval_endpoint(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -280,7 +284,7 @@ async def submit_for_approval_endpoint(
         )
 
     try:
-        proposal = await submit_for_approval(db, proposal)
+        proposal = await submit_for_approval(db, proposal, current.email)
     except InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
@@ -297,7 +301,7 @@ async def submit_for_approval_endpoint(
 async def approve_proposal_endpoint(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -307,7 +311,7 @@ async def approve_proposal_endpoint(
         )
 
     try:
-        proposal = await approve_entire_proposal(db, proposal)
+        proposal = await approve_entire_proposal(db, proposal, current.email)
     except (InvalidTransitionError, ApprovalGuardError) as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
@@ -325,7 +329,7 @@ async def request_changes_endpoint(
     proposal_id: uuid.UUID,
     body: RequestChangesRequest,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -335,7 +339,7 @@ async def request_changes_endpoint(
         )
 
     try:
-        proposal = await request_changes(db, proposal, body.reason)
+        proposal = await request_changes(db, proposal, body.reason, current.email)
     except InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
@@ -353,7 +357,7 @@ async def reject_proposal_endpoint(
     proposal_id: uuid.UUID,
     body: RejectProposalRequest,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -363,7 +367,7 @@ async def reject_proposal_endpoint(
         )
 
     try:
-        proposal = await reject_proposal(db, proposal, body.reason)
+        proposal = await reject_proposal(db, proposal, body.reason, current.email)
     except InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
@@ -382,7 +386,7 @@ async def generate_document_endpoint(
     proposal_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -405,7 +409,7 @@ async def generate_document_endpoint(
     # Runs after the response is sent — rendering + upload never block this
     # request (CLAUDE.md: external calls run as background jobs, never
     # inline in a request handler).
-    background_tasks.add_task(run_document_generation_job, proposal_id)
+    background_tasks.add_task(run_document_generation_job, proposal_id, current.email)
 
     return proposal
 
@@ -488,7 +492,7 @@ async def deliver_proposal_endpoint(
     proposal_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: CurrentSalesperson = Depends(get_current_salesperson),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> ProposalDetailResponse:
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
@@ -507,7 +511,7 @@ async def deliver_proposal_endpoint(
     # Runs after the response is sent — sending the email never blocks this
     # request (CLAUDE.md: external calls run as background jobs, never
     # inline in a request handler).
-    background_tasks.add_task(run_delivery_job, proposal_id)
+    background_tasks.add_task(run_delivery_job, proposal_id, current.email)
 
     return proposal
 
@@ -529,3 +533,22 @@ async def get_delivery_records_endpoint(
             detail=f"Proposal with ID {proposal_id} not found",
         )
     return await list_delivery_records(db, proposal_id)
+
+
+@router.get(
+    "/{proposal_id}/activity",
+    response_model=List[ActivityLogEntryResponse],
+    summary="List the audit trail for this proposal, newest first (salesperson authenticated)",
+)
+async def get_activity_endpoint(
+    proposal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentSalesperson = Depends(get_current_salesperson),
+) -> List[ActivityLogEntryResponse]:
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Proposal with ID {proposal_id} not found",
+        )
+    return await list_activity_for_proposal(db, proposal_id)

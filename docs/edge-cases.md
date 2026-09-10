@@ -4,6 +4,25 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-10 — Phase 8 (activity log) + Phase 9 (job-failure monitoring) built; three items still open
+
+**The gap (business view):** Two things were missing going into this pass: (1) there was no audit trail at all — CLAUDE.md requires one for every state-relevant action, viewable in the dashboard and exportable for compliance, and nothing in the codebase wrote to anything but the app logger; (2) background-job failures (a failed generation, regeneration, document render, or delivery) only ever surfaced as a `logger.warning`/`logger.error` line with no consistent tag, so nothing external could alert on them the way `INTAKE_SCHEMA_DRIFT` now does for intake.
+
+**The fix (implemented 2026-09-10):**
+- **Phase 8**: `ActivityLogEntry` + `record_activity()` (`backend/app/models/activity_log.py`, `backend/app/services/activity_log_service.py`) — every service call site that already mutated proposal/section state (intake creation, manual edit, regeneration success/failure, section/proposal approval, changes-requested, reject, document generation success/failure, delivery success/failure, generation success/failure) now also writes an entry in the *same* commit. `actor` is threaded end-to-end, including through every background job (`run_generation_job(proposal_id, actor)`, etc.), so an async outcome still records who triggered it. `GET /proposals/{id}/activity` (dashboard, newest-first) and `GET /activity/export` (CSV, optionally filtered by proposal, oldest-first, for compliance) are both salesperson-authenticated. Frontend: `ActivityTimeline.tsx`, a collapsible per-proposal panel matching `ClaudeCallLogPanel`'s existing pattern.
+- **Phase 9 (partial)**: every background-job failure site now logs a consistent `BACKGROUND_JOB_FAILED job=<name> proposal=<id> ...` tag, extending the intake-monitoring pattern (`INTAKE_SCHEMA_DRIFT`/`INTAKE_AUTH_FAILED`, see the entry below) to generation, regeneration, document generation, and delivery — a log-based monitor can now alert on any failed async job in the system, not just intake.
+
+**Three things deliberately left open, not silently dropped:**
+1. **Audit log integrity (architecture.md §1)**: `activity_log_entries` is a normal table with normal CRUD permissions at the DB level. The application layer never exposes an update/delete path (only `record_activity`'s insert and the list/export reads), but that's a convention, not a guarantee — anyone with direct DB access (or a future endpoint added carelessly) could edit or delete a row with nothing to stop them. Real tamper-resistance (DB-level REVOKE on UPDATE/DELETE for the app's role, a trigger, or a genuinely separate WORM store) is unbuilt. Worth a real decision before this table is relied on for actual compliance, not just internal dashboarding.
+2. **Retention/access-control policy (decisions #18)** still isn't defined, and this table makes the gap bigger, not smaller, in the same way the Claude-call-log table did (see that entry below) — it now holds a second copy of state-relevant facts (who did what, when) for every proposal indefinitely, with `ON DELETE CASCADE` as the only lifecycle rule (dies with the Proposal, no independent retention window).
+3. **RLS was never audited.** The backend connects to Postgres with what functions as a service-role key and does all authorization in the FastAPI dependency layer (`get_current_salesperson`), not via Postgres Row-Level Security. Given this is single-tenant/single-role (decisions #1, #21), RLS may genuinely not be needed — but that's an assumption nobody has explicitly confirmed, only inherited from how Phase 0 happened to wire auth. Worth a deliberate yes/no, not a default.
+
+**Where it lives:** `backend/app/models/activity_log.py`, `backend/app/services/activity_log_service.py`, hooks in `intake_service.py`/`proposal_service.py`/`generation_service.py`/`regeneration_service.py`/`approval_service.py`/`document_service.py`/`delivery_service.py`, `backend/app/api/v1/endpoints/proposals.py` (`/activity`) and `activity.py` (`/activity/export`), `web-app/components/proposals/ActivityTimeline.tsx`, tests in `backend/tests/test_activity_log.py`.
+
+**Open follow-up:** the three items above, plus: no test exists yet that specifically exercises the `BACKGROUND_JOB_FAILED` log line itself (the underlying job-failure *behavior* is well-tested — this only adds a tag to an already-tested code path), so a monitoring rule built against that tag should be smoke-tested against a real failure before being trusted in production.
+
+---
+
 ## 2026-09-10 — n8n error branch + backend alert-logging built for schema drift; one real gap remains
 
 **The gap (business view):** The canonical schema lives in three places that have to agree — the Google Form question, the Sheet column header it produces, and n8n's Code node mapping that header to a canonical key for FastAPI (`docs/intake-schema.md`). Nobody but n8n's maintainer can keep those in sync. Three distinct failure shapes, each with a different blast radius:

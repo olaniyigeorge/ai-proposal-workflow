@@ -5,6 +5,7 @@ import {
   DocumentArtifactResponse,
   DeliveryDraftResponse,
   DeliveryRecordResponse,
+  ActivityLogEntryResponse,
   ApiError,
 } from './types';
 import { DEV_TOKEN, getClientAuthToken } from '../auth/session';
@@ -277,6 +278,17 @@ export async function getDeliveryRecords(
   });
 }
 
+export async function getActivityLog(
+  proposalId: string,
+  token?: string
+): Promise<ActivityLogEntryResponse[]> {
+  return request<ActivityLogEntryResponse[]>(`/proposals/${proposalId}/activity`, {
+    method: 'GET',
+    token,
+    cache: 'no-store',
+  });
+}
+
 export const api = {
   listProposals,
   getProposal,
@@ -294,4 +306,5 @@ export const api = {
   getDeliveryDraft,
   deliverProposal,
   getDeliveryRecords,
+  getActivityLog,
 };

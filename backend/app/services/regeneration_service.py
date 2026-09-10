@@ -12,6 +12,7 @@ docs/edge-cases.md "Failed regeneration must not burn a cap attempt").
 import time
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,8 +32,10 @@ from app.domain.regeneration import (
     assert_section_is_regenerable,
     regeneration_invalidates_approval,
 )
+from app.models.activity_log import ActivityEventType
 from app.models.claude_call_log import ClaudeCallStatus, ClaudeCallType
 from app.models.proposal import Proposal, ProposalSection, ProposalStatus, SectionApprovalStatus, SectionKey
+from app.services.activity_log_service import record_activity
 from app.services.claude_log_service import record_claude_call
 from app.services.proposal_service import get_proposal_by_id
 from app.utils.logger import logger
@@ -71,7 +74,11 @@ async def start_section_regeneration(
 
 
 async def regenerate_section(
-    db: AsyncSession, proposal: Proposal, section_key: SectionKey, instruction: str
+    db: AsyncSession,
+    proposal: Proposal,
+    section_key: SectionKey,
+    instruction: str,
+    actor: Optional[str] = None,
 ) -> None:
     """The actual Claude call + section mutation, given an already-open db
     session and loaded proposal. Split out from run_section_regeneration_job
@@ -113,8 +120,10 @@ async def regenerate_section(
     try:
         result = await generate_text(system_prompt, user_prompt)
     except ClaudeGenerationError as exc:
+        # BACKGROUND_JOB_FAILED: greppable tag (Phase 9 hardening), matching
+        # the intake-monitoring pattern in app/main.py.
         logger.warning(
-            "Regeneration failed for proposal %s section %s: %s",
+            "BACKGROUND_JOB_FAILED job=regeneration proposal=%s section=%s error=%s",
             proposal.id,
             section_key.value,
             exc,
@@ -139,6 +148,18 @@ async def regenerate_section(
             duration_ms=int((time.monotonic() - started_at) * 1000),
             instruction=instruction,
             error_message=str(exc),
+        )
+        # Deliberately NOT counted against the cap (docs/edge-cases.md "A
+        # flaky Claude call must not burn one of the salesperson's 3
+        # regeneration attempts") — logged anyway, since a failed call is
+        # still a state-relevant event worth an audit trail entry.
+        record_activity(
+            db,
+            proposal_id=proposal.id,
+            event_type=ActivityEventType.REGENERATION_FAILED,
+            description=f"Regeneration failed for section '{section_key.value}': {exc}",
+            actor=actor,
+            metadata={"section_key": section_key.value, "instruction": instruction},
         )
         await db.commit()
         return
@@ -178,6 +199,18 @@ async def regenerate_section(
             "resulting_version": section.version,
         },
     ]
+    record_activity(
+        db,
+        proposal_id=proposal.id,
+        event_type=ActivityEventType.SECTION_REGENERATED,
+        description=f"Section '{section_key.value}' regenerated (version {section.version})",
+        actor=actor,
+        metadata={
+            "section_key": section_key.value,
+            "instruction": instruction,
+            "version": section.version,
+        },
+    )
     await db.commit()
     logger.info(
         "Section '%s' regenerated on proposal %s (attempt %s/3)",
@@ -188,11 +221,15 @@ async def regenerate_section(
 
 
 async def run_section_regeneration_job(
-    proposal_id: uuid.UUID, section_key: SectionKey, instruction: str
+    proposal_id: uuid.UUID,
+    section_key: SectionKey,
+    instruction: str,
+    actor: Optional[str] = None,
 ) -> None:
     """Background-task entry point: owns its own DB session since it runs
     outside the request's session scope (FastAPI BackgroundTasks execute
-    after the response is sent).
+    after the response is sent). `actor` is threaded through from the
+    request so the eventual activity-log entry records who asked for it.
     """
     async with AsyncSessionLocal() as db:
         proposal = await get_proposal_by_id(db, proposal_id)
@@ -200,4 +237,4 @@ async def run_section_regeneration_job(
             logger.error("Regeneration job: proposal %s no longer exists", proposal_id)
             return
 
-        await regenerate_section(db, proposal, section_key, instruction)
+        await regenerate_section(db, proposal, section_key, instruction, actor)

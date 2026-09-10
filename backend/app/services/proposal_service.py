@@ -8,12 +8,14 @@ from app.domain.content_origin import content_origin_after_manual_edit
 from app.domain.exceptions import SectionNotFoundError
 from app.domain.proposal_transitions import assert_section_editable, transition_proposal
 from app.domain.regeneration import regeneration_invalidates_approval
+from app.models.activity_log import ActivityEventType
 from app.models.proposal import (
     Proposal,
     ProposalStatus,
     SectionApprovalStatus,
     SectionKey,
 )
+from app.services.activity_log_service import record_activity
 from app.utils.logger import logger
 
 
@@ -43,7 +45,11 @@ async def get_proposal_by_id(
 
 
 async def update_section_content(
-    db: AsyncSession, proposal: Proposal, section_key: SectionKey, content: str
+    db: AsyncSession,
+    proposal: Proposal,
+    section_key: SectionKey,
+    content: str,
+    actor: Optional[str] = None,
 ) -> Proposal:
     """Persist a salesperson's manual edit to a single section.
 
@@ -72,6 +78,14 @@ async def update_section_content(
     if regeneration_invalidates_approval(proposal.status):
         transition_proposal(proposal, ProposalStatus.IN_REVIEW)
 
+    record_activity(
+        db,
+        proposal_id=proposal.id,
+        event_type=ActivityEventType.SECTION_EDITED,
+        description=f"Section '{section_key.value}' manually edited (version {section.version})",
+        actor=actor,
+        metadata={"section_key": section_key.value, "version": section.version},
+    )
     await db.commit()
     await db.refresh(proposal)
     logger.info(

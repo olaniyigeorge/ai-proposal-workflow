@@ -10,7 +10,7 @@ itself.
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,8 +21,10 @@ from app.core.database import AsyncSessionLocal
 from app.domain.delivery import build_email_body, build_email_html, build_email_subject
 from app.domain.exceptions import DocumentNotReadyError
 from app.domain.proposal_transitions import transition_proposal
+from app.models.activity_log import ActivityEventType
 from app.models.delivery import DeliveryRecord, DeliveryStatus
 from app.models.proposal import Proposal, ProposalStatus
+from app.services.activity_log_service import record_activity
 from app.services.document_service import get_document_artifact
 from app.services.proposal_service import get_proposal_by_id
 from app.utils.logger import logger
@@ -78,7 +80,9 @@ async def start_delivery(db: AsyncSession, proposal: Proposal) -> Proposal:
     return proposal
 
 
-async def deliver_proposal(db: AsyncSession, proposal: Proposal) -> None:
+async def deliver_proposal(
+    db: AsyncSession, proposal: Proposal, actor: Optional[str] = None
+) -> None:
     """The actual send + DeliveryRecord write, given an already-open db
     session and loaded proposal. Split out from run_delivery_job so it can
     be exercised in tests against the test DB session directly (mirrors
@@ -86,10 +90,20 @@ async def deliver_proposal(db: AsyncSession, proposal: Proposal) -> None:
     """
     artifact = await get_document_artifact(db, proposal.id)
     if artifact is None:
+        # BACKGROUND_JOB_FAILED: greppable tag (Phase 9 hardening), matching
+        # the intake-monitoring pattern in app/main.py.
         logger.error(
-            "Delivery job: proposal %s has no document to deliver", proposal.id
+            "BACKGROUND_JOB_FAILED job=delivery proposal=%s error=no_document_to_deliver",
+            proposal.id,
         )
         transition_proposal(proposal, ProposalStatus.DELIVERY_FAILED)
+        record_activity(
+            db,
+            proposal_id=proposal.id,
+            event_type=ActivityEventType.DELIVERY_FAILED,
+            description="Delivery failed: no document to deliver",
+            actor=actor,
+        )
         await db.commit()
         return
 
@@ -101,7 +115,9 @@ async def deliver_proposal(db: AsyncSession, proposal: Proposal) -> None:
     try:
         await send_email(proposal.client_email, subject, body, html_body)
     except EmailSendError as exc:
-        logger.warning("Delivery failed for proposal %s: %s", proposal.id, exc)
+        logger.warning(
+            "BACKGROUND_JOB_FAILED job=delivery proposal=%s error=%s", proposal.id, exc
+        )
         db.add(
             DeliveryRecord(
                 proposal_id=proposal.id,
@@ -112,6 +128,14 @@ async def deliver_proposal(db: AsyncSession, proposal: Proposal) -> None:
             )
         )
         transition_proposal(proposal, ProposalStatus.DELIVERY_FAILED)
+        record_activity(
+            db,
+            proposal_id=proposal.id,
+            event_type=ActivityEventType.DELIVERY_FAILED,
+            description=f"Delivery failed: {exc}",
+            actor=actor,
+            metadata={"error": str(exc)},
+        )
         await db.commit()
         return
 
@@ -125,14 +149,23 @@ async def deliver_proposal(db: AsyncSession, proposal: Proposal) -> None:
         )
     )
     transition_proposal(proposal, ProposalStatus.DELIVERED)
+    record_activity(
+        db,
+        proposal_id=proposal.id,
+        event_type=ActivityEventType.DELIVERED,
+        description=f"Proposal delivered to {proposal.client_email}",
+        actor=actor,
+        metadata={"recipient_email": proposal.client_email},
+    )
     await db.commit()
     logger.info("Proposal %s delivered to %s", proposal.id, proposal.client_email)
 
 
-async def run_delivery_job(proposal_id: uuid.UUID) -> None:
+async def run_delivery_job(proposal_id: uuid.UUID, actor: Optional[str] = None) -> None:
     """Background-task entry point: owns its own DB session since it runs
     outside the request's session scope (FastAPI BackgroundTasks execute
-    after the response is sent).
+    after the response is sent). `actor` is threaded through from the
+    request so the eventual activity-log entry records who asked for it.
     """
     async with AsyncSessionLocal() as db:
         proposal = await get_proposal_by_id(db, proposal_id)
@@ -140,4 +173,4 @@ async def run_delivery_job(proposal_id: uuid.UUID) -> None:
             logger.error("Delivery job: proposal %s no longer exists", proposal_id)
             return
 
-        await deliver_proposal(db, proposal)
+        await deliver_proposal(db, proposal, actor)

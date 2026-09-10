@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.generation import pinned_prefix_for_section
+from app.models.activity_log import ActivityEventType
 from app.models.proposal import (
     ContentOrigin,
     IntakeSubmission,
@@ -14,6 +15,7 @@ from app.models.proposal import (
     SectionKey,
 )
 from app.schemas.intake import IntakePayload
+from app.services.activity_log_service import record_activity
 
 
 def normalize_text(value: str) -> str:
@@ -136,6 +138,16 @@ async def process_intake(
         proposal_id=proposal.id,
     )
     db.add(intake_sub)
+
+    # actor=None: system-originated (n8n intake), no salesperson identity
+    # involved at creation time — see docs/decisions.md #20.
+    record_activity(
+        db,
+        proposal_id=proposal.id,
+        event_type=ActivityEventType.CREATED,
+        description=f"Proposal created from intake for {payload.company_name}",
+        metadata={"company_name": payload.company_name},
+    )
 
     await db.commit()
     await db.refresh(proposal)

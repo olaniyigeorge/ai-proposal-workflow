@@ -23,8 +23,10 @@ from app.core.database import AsyncSessionLocal
 from app.domain.document import build_document_filename, render_proposal_html
 from app.domain.exceptions import DocumentAlreadyGeneratedError
 from app.domain.proposal_transitions import transition_proposal
+from app.models.activity_log import ActivityEventType
 from app.models.document import DocumentArtifact
 from app.models.proposal import Proposal, ProposalStatus
+from app.services.activity_log_service import record_activity
 from app.services.proposal_service import get_proposal_by_id
 from app.utils.logger import logger
 
@@ -63,7 +65,9 @@ async def start_document_generation(db: AsyncSession, proposal: Proposal) -> Pro
     return proposal
 
 
-async def generate_document(db: AsyncSession, proposal: Proposal) -> None:
+async def generate_document(
+    db: AsyncSession, proposal: Proposal, actor: Optional[str] = None
+) -> None:
     """The actual render + upload + DocumentArtifact write, given an
     already-open db session and loaded proposal. Split out from
     run_document_generation_job so it can be exercised in tests against the
@@ -75,8 +79,22 @@ async def generate_document(db: AsyncSession, proposal: Proposal) -> None:
     try:
         pdf_bytes = await asyncio.to_thread(render_pdf, html_content)
     except PdfRenderError as exc:
-        logger.warning("Document render failed for proposal %s: %s", proposal.id, exc)
+        # BACKGROUND_JOB_FAILED: greppable tag (Phase 9 hardening), matching
+        # the intake-monitoring pattern in app/main.py.
+        logger.warning(
+            "BACKGROUND_JOB_FAILED job=document_generation stage=render proposal=%s error=%s",
+            proposal.id,
+            exc,
+        )
         transition_proposal(proposal, ProposalStatus.DOCUMENT_GENERATION_FAILED)
+        record_activity(
+            db,
+            proposal_id=proposal.id,
+            event_type=ActivityEventType.DOCUMENT_GENERATION_FAILED,
+            description=f"Document rendering failed: {exc}",
+            actor=actor,
+            metadata={"stage": "render", "error": str(exc)},
+        )
         await db.commit()
         return
 
@@ -86,8 +104,20 @@ async def generate_document(db: AsyncSession, proposal: Proposal) -> None:
     try:
         await upload_pdf(storage_path, pdf_bytes)
     except StorageUploadError as exc:
-        logger.warning("Document upload failed for proposal %s: %s", proposal.id, exc)
+        logger.warning(
+            "BACKGROUND_JOB_FAILED job=document_generation stage=upload proposal=%s error=%s",
+            proposal.id,
+            exc,
+        )
         transition_proposal(proposal, ProposalStatus.DOCUMENT_GENERATION_FAILED)
+        record_activity(
+            db,
+            proposal_id=proposal.id,
+            event_type=ActivityEventType.DOCUMENT_GENERATION_FAILED,
+            description=f"Document upload failed: {exc}",
+            actor=actor,
+            metadata={"stage": "upload", "error": str(exc)},
+        )
         await db.commit()
         return
 
@@ -100,6 +130,14 @@ async def generate_document(db: AsyncSession, proposal: Proposal) -> None:
         )
     )
     transition_proposal(proposal, ProposalStatus.DOCUMENT_READY)
+    record_activity(
+        db,
+        proposal_id=proposal.id,
+        event_type=ActivityEventType.DOCUMENT_GENERATED,
+        description=f"Document generated ({page_count} pages)",
+        actor=actor,
+        metadata={"page_count": page_count, "file_size_bytes": len(pdf_bytes)},
+    )
     await db.commit()
     logger.info(
         "Document generated for proposal %s (%s pages, %s bytes)",
@@ -109,10 +147,13 @@ async def generate_document(db: AsyncSession, proposal: Proposal) -> None:
     )
 
 
-async def run_document_generation_job(proposal_id: uuid.UUID) -> None:
+async def run_document_generation_job(
+    proposal_id: uuid.UUID, actor: Optional[str] = None
+) -> None:
     """Background-task entry point: owns its own DB session since it runs
     outside the request's session scope (FastAPI BackgroundTasks execute
-    after the response is sent).
+    after the response is sent). `actor` is threaded through from the
+    request so the eventual activity-log entry records who asked for it.
     """
     async with AsyncSessionLocal() as db:
         proposal = await get_proposal_by_id(db, proposal_id)
@@ -120,4 +161,4 @@ async def run_document_generation_job(proposal_id: uuid.UUID) -> None:
             logger.error("Document job: proposal %s no longer exists", proposal_id)
             return
 
-        await generate_document(db, proposal)
+        await generate_document(db, proposal, actor)

@@ -125,6 +125,33 @@ export interface DeliveryRecordResponse {
   created_at: string;
 }
 
+export type ActivityEventType =
+  | 'created'
+  | 'generated'
+  | 'generation_failed'
+  | 'section_edited'
+  | 'section_regenerated'
+  | 'regeneration_failed'
+  | 'section_approved'
+  | 'submitted_for_approval'
+  | 'proposal_approved'
+  | 'changes_requested'
+  | 'rejected'
+  | 'document_generated'
+  | 'document_generation_failed'
+  | 'delivered'
+  | 'delivery_failed';
+
+export interface ActivityLogEntryResponse {
+  id: string;
+  proposal_id: string;
+  event_type: ActivityEventType | string;
+  description: string;
+  actor?: string | null;
+  event_metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface ApiErrorDetail {
   code?: string;
   message: string;

@@ -57,8 +57,8 @@ Legend: 🔴 blocking (forks the core architecture) · 🟡 secondary (shapes on
 
 | # | Question | Why it matters | Decision | Date |
 |---|---|---|---|---|
-| 18 ✅ | Will proposals contain PII/sensitive data? | Shapes logging policy and Supabase RLS design. | **Yes** — client names, emails, company info, and other client-provided details. Retention and access-control policy must account for this; specific retention period/redaction rules not yet defined (needed before Phase 8). | 2026-09-08 |
-| 19 ✅ | What must activity logging satisfy operationally? | Determines audit log scope/tooling. | **Internal audit trail**, viewable in the dashboard, and **exportable** for compliance purposes when needed. | 2026-09-08 |
+| 18 🟠 | Will proposals contain PII/sensitive data? | Shapes logging policy and Supabase RLS design. | **Yes** — client names, emails, company info, and other client-provided details. Retention and access-control policy must account for this; specific retention period/redaction rules **still not defined** even though Phase 8 (activity logging) has now shipped — that table adds a second copy of state-relevant facts per proposal with no retention window narrower than `ON DELETE CASCADE`, making this gap bigger, not smaller (see `docs/edge-cases.md`). Also still unaudited: whether Postgres RLS is meant to be part of the access-control story at all, given the backend currently authorizes entirely in the FastAPI dependency layer with a service-role-equivalent DB connection. | 2026-09-08 (still open 2026-09-10) |
+| 19 ✅ | What must activity logging satisfy operationally? | Determines audit log scope/tooling. | **Internal audit trail**, viewable in the dashboard, and **exportable** for compliance purposes when needed. **Implemented 2026-09-10** (Phase 8): `ActivityLogEntry` — see `docs/architecture.md` §7 Phase 8 and `docs/edge-cases.md` for what's built vs. still open (audit-log tamper-resistance at the DB level, retention policy under #18). | 2026-09-08 (implemented 2026-09-10) |
 
 ## Intake attribution (surfaced 2026-09-08 while cross-referencing the PRD — resolved 2026-09-09)
 
@@ -68,4 +68,4 @@ Legend: 🔴 blocking (forks the core architecture) · 🟡 secondary (shapes on
 
 ---
 
-**Genuinely still open**, in priority order: #5 (lock the exact canonical field list), #9's follow-up (post-approval revision handling — implemented against the assumed default, but not explicitly stakeholder-confirmed, and PDF-level consequences are still unaddressed), #21's follow-up (cross-salesperson approval permission — a default is assumed, confirm it), and the assignment criteria for #20's claim/assign step (manual for now). Everything else in this log is resolved.
+**Genuinely still open**, in priority order: #5 (lock the exact canonical field list), #9's follow-up (post-approval revision handling — implemented against the assumed default, but not explicitly stakeholder-confirmed, and PDF-level consequences are still unaddressed), #18 (PII retention/redaction policy and whether Postgres RLS is meant to be part of the access-control model — Phase 8 shipped the audit-log mechanism but made this gap bigger, not smaller), #21's follow-up (cross-salesperson approval permission — a default is assumed, confirm it), and the assignment criteria for #20's claim/assign step (manual for now). Everything else in this log is resolved.

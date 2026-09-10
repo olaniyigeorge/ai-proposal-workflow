@@ -12,6 +12,7 @@ import { GenerateProposalButton } from '@/components/proposals/GenerateProposalB
 import { ApproveSectionButton } from '@/components/proposals/ApproveSectionButton';
 import { ApprovalPanel } from '@/components/proposals/ApprovalPanel';
 import { ClaudeCallLogPanel } from '@/components/proposals/ClaudeCallLogPanel';
+import { ActivityTimeline } from '@/components/proposals/ActivityTimeline';
 import { GenerateDocumentButton } from '@/components/proposals/GenerateDocumentButton';
 import { DocumentPreview } from '@/components/proposals/DocumentPreview';
 import { DeliveryPanel } from '@/components/proposals/DeliveryPanel';
@@ -352,6 +353,7 @@ export default async function ProposalDetailPage({ params }: PageProps) {
           </div>
 
           <ClaudeCallLogPanel proposalId={proposal.id} />
+          <ActivityTimeline proposalId={proposal.id} />
         </div>
       </div>
     </div>
