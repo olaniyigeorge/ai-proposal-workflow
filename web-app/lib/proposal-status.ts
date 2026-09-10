@@ -251,9 +251,24 @@ export function canRegenerateSection(
   );
 }
 
+// "Approve Proposal" is the bulk action (system-flow.md §3): it force-approves
+// every still-pending section and finalizes in one call, so it's available
+// whenever the state machine allows it — not gated on pendingSectionCount,
+// which was a Phase-1-era assumption from before the bulk-approve semantics
+// were decided in Phase 5. The UI still surfaces the pending count so the
+// salesperson knows what they're about to force-approve.
 export function canApproveProposal(proposal: ProposalDetailResponse): boolean {
-  return (
-    (proposal.status === 'IN_REVIEW' || proposal.status === 'PENDING_APPROVAL') &&
-    pendingSectionCount(proposal) === 0
-  );
+  return proposal.status === 'IN_REVIEW' || proposal.status === 'PENDING_APPROVAL';
+}
+
+export function canApproveSection(proposal: ProposalDetailResponse): boolean {
+  return proposal.status === 'IN_REVIEW';
+}
+
+export function canRequestChangesOrReject(proposal: ProposalDetailResponse): boolean {
+  return proposal.status === 'PENDING_APPROVAL';
+}
+
+export function canTriggerGeneration(proposal: ProposalDetailResponse): boolean {
+  return proposal.status === 'DRAFT' || proposal.status === 'GENERATION_FAILED';
 }
