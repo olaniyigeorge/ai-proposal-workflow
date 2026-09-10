@@ -4,6 +4,39 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-10 — A proposal from n8n intake had no way to leave DRAFT
+
+**The gap (business view):** Every proposal created by the intake webhook lands in `DRAFT` with empty/template-only sections. Phase 2 built the `POST /generate` endpoint and the background Claude job, but no frontend control ever called it — the detail page rendered a fully read-only view with no "Generate" action anywhere. A real inbound request from n8n would sit in `DRAFT` forever from the salesperson's point of view: they'd open the proposal, see boilerplate/empty sections, and have no button to press. That's not a rough edge, it's a dead end in the one flow every proposal must pass through — every single proposal created via the real intake path would have been stuck. Caught by the user reviewing the running app rather than by any test, since the backend endpoint genuinely worked and every backend test that exercised it called it directly by URL.
+
+**The fix (implemented 2026-09-10):** `GenerateProposalButton` — a client component shown in the Proposal Actions panel whenever `proposal.status` is `DRAFT` or `GENERATION_FAILED` (relabeled "Retry Generation" in the latter case). Fires `POST /generate`, then polls `GET /proposals/{id}` every 2.5s (60s timeout) until status leaves `GENERATING`, then refreshes the page — same polling pattern as `RegenerateSectionButton`.
+
+**Where it lives:** `web-app/components/proposals/GenerateProposalButton.tsx`, wired into `web-app/app/proposals/[id]/page.tsx` via `canTriggerGeneration()` in `lib/proposal-status.ts`.
+
+**Open follow-up:** none of Phase 2's "Detail view shows GENERATING status + polling" UI spec (`docs/ui-plan.md` §9) was actually built until now — worth double-checking the equivalent trigger exists for every other phase's primary action before considering that phase done, not just the backend endpoint. (Regeneration and section-editing didn't have this gap because their buttons were built alongside their endpoints in the same phase; full-proposal generation was the one action whose UI trigger got skipped.)
+
+---
+
+## 2026-09-10 — "Approve entire proposal" can rubber-stamp sections nobody actually read
+
+**The gap (business view):** The bulk "Approve Proposal" action (system-flow.md §3: "a single action that approves all remaining sections at once") force-approves every still-pending section in the same call that finalizes the proposal. Combined with self-approval being frictionless by design (decisions #14) and there being no separate approver role (decisions #21), a salesperson can open a freshly-generated proposal and click "Approve Proposal" immediately — no section ever individually reviewed, no read confirmation, nothing stopping a factually-off or badly-toned AI section from reaching `APPROVED` (and eventually the client) with zero human eyes actually on it. The per-section approve flow exists specifically to make review deliberate section-by-section; the bulk action is a designed escape hatch from that deliberateness, and nothing currently signals to the salesperson that clicking it might be skipping review entirely versus just finishing up the last section or two.
+
+**The fix (partial):** the UI is honest about what the bulk action will do rather than hiding it — `ApprovalPanel` shows "will approve N remaining" next to the button whenever `pendingSectionCount > 0`, so a salesperson approving 5 unread sections at least sees that number before clicking, rather than a button that looks identical whether 0 or 6 sections are still pending. This is a visibility nudge, not a guardrail — it doesn't require acknowledgment or block the action.
+
+**Where it lives:** `web-app/components/proposals/ApprovalPanel.tsx`, `backend/app/services/approval_service.py::approve_entire_proposal`.
+
+**Open follow-up:** if this turns out to be a real behavior in practice (not just a theoretical risk), the cheapest next step is requiring a confirmation dialog when `remainingPending > 0` specifically (mirroring `RegenerateSectionButton`'s human-edit confirmation), rather than restricting the bulk action itself — the system-flow.md diagram treats "approve all at once" as an intentional, documented feature, so removing it isn't the fix; making the skip-ahead cost more visible in the moment is.
+
+---
+
+## 2026-09-10 — Claude call logs are a second place client PII lives, with no retention policy of their own
+
+**The gap (business view):** The new `claude_call_logs` table stores the full system/user prompt and Claude's response for every generation and regeneration call — which means client name, company, needs summary, pricing, and timeline (everything in the canonical facts block) now exists verbatim in a second table, not just on `Proposal`. Decisions #18 already flags that Proposal-level PII retention/access-control isn't finalized; this table makes that gap bigger before it's resolved, not smaller — it's an unbounded, ever-growing, unredacted log of exactly the sensitive fields the still-open policy question is about, and every regeneration attempt adds another full copy of that same data.
+
+**The fix (accepted for now, not solved):** `ON DELETE CASCADE` on `proposal_id` means the log rows die when a Proposal does, so there's no leak *beyond* a proposal's own lifetime — but there's no independent retention window shorter than the proposal's, no redaction of PII within stored prompts/responses, and no access control narrower than "any authenticated salesperson can call `GET /proposals/{id}/claude-calls`" (consistent with the rest of the single-role model, per decisions #21, but worth naming explicitly for a table whose entire purpose is holding raw prompt/response text).
+
+**Where it lives:** `backend/app/models/claude_call_log.py`, migration `b637bee3715a`.
+
+**Open follow-up:** fold this into decisions #18 when that retention/access-control policy actually gets defined — don't solve it in isolation for just this table. In the meantime, this table exists purely for internal prompt-improvement observability (per the user's request), not as a system of record anything else reads, so the practical exposure is currently bounded to "whoever can already see the proposal in this single-tenant internal tool."
 ## 2026-09-10 — A flaky Claude call must not burn one of the salesperson's 3 regeneration attempts
 
 **The gap (business view):** The 3-attempt cap (decisions #13) exists to force a directed, converging regeneration rather than aimless retries — but if a transient failure (rate limit, timeout, a momentary API outage) eats one of only 3 attempts, the salesperson is punished for infrastructure flakiness, not their own instruction quality. Losing a third of their budget to something entirely outside their control is exactly the kind of "the tool wasted my time" moment that kills trust in an AI feature, especially right when they're trying to get a proposal out the door.
