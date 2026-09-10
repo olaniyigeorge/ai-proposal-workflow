@@ -122,6 +122,11 @@ class ProposalSection(Base, TimestampMixin):
     )
     regeneration_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # Per-attempt instruction trail (docs/decisions.md #13b): each regeneration
+    # call appends {instruction, attempted_at, outcome, resulting_version|error}
+    # so the salesperson's intent across attempts isn't re-typed from memory.
+    # Append-only from the API's perspective; only regeneration_service.py writes it.
+    regeneration_log: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
     proposal: Mapped["Proposal"] = relationship("Proposal", back_populates="sections")
 

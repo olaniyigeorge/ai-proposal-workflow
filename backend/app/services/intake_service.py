@@ -3,6 +3,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.generation import pinned_prefix_for_section
 from app.models.proposal import (
     ContentOrigin,
     IntakeSubmission,
@@ -96,13 +97,13 @@ async def process_intake(
             SectionKey.PROPOSED_SOLUTION,
             "Proposed Solution",
             1,
-            f"Scope:\n{payload.project_scope}",
+            pinned_prefix_for_section(proposal, SectionKey.PROPOSED_SOLUTION),
         ),
         (
             SectionKey.DELIVERABLES,
             "Deliverables",
             2,
-            f"Services & Deliverables:\n{payload.recommended_services}",
+            pinned_prefix_for_section(proposal, SectionKey.DELIVERABLES),
         ),
         (SectionKey.TIMELINE, "Timeline", 3, payload.proposed_timeline),
         (SectionKey.PRICING, "Pricing", 4, payload.estimated_pricing),

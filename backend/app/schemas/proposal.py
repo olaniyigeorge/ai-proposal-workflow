@@ -1,7 +1,17 @@
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+class RegenerationLogEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    instruction: str
+    attempted_at: str
+    outcome: str
+    resulting_version: Optional[int] = None
+    error: Optional[str] = None
 
 
 class ProposalSectionResponse(BaseModel):
@@ -16,8 +26,31 @@ class ProposalSectionResponse(BaseModel):
     approval_status: str
     regeneration_count: int
     version: int
+    regeneration_log: List[RegenerationLogEntry] = []
     created_at: datetime
     updated_at: datetime
+
+
+class SectionUpdateRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+
+    @field_validator("content")
+    @classmethod
+    def content_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("content cannot be blank")
+        return value
+
+
+class SectionRegenerateRequest(BaseModel):
+    instruction: str = Field(..., min_length=1)
+
+    @field_validator("instruction")
+    @classmethod
+    def instruction_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("instruction cannot be blank")
+        return value
 
 
 class ProposalSummaryResponse(BaseModel):

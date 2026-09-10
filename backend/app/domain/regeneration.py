@@ -5,10 +5,21 @@ Constraints" (regeneration cap, mandatory instruction, approval invalidation).
 from app.domain.exceptions import (
     RegenerationCapExceededError,
     RegenerationInstructionRequiredError,
+    SectionNotRegenerableError,
 )
-from app.models.proposal import ProposalSection, ProposalStatus
+from app.domain.generation import GENERATED_SECTION_KEYS
+from app.models.proposal import ProposalSection, ProposalStatus, SectionKey
 
 MAX_REGENERATION_ATTEMPTS = 3
+
+
+def assert_section_is_regenerable(section_key: SectionKey) -> None:
+    """Raises if the section has no AI-generated content at all (Introduction,
+    Timeline, Pricing, Next Steps are pinned facts/boilerplate — there is
+    nothing for Claude to regenerate, per docs/architecture.md §4 point 4).
+    """
+    if section_key not in GENERATED_SECTION_KEYS:
+        raise SectionNotRegenerableError(section_key)
 
 
 def assert_can_regenerate_section(section: ProposalSection, instruction: str) -> None:

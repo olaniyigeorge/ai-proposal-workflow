@@ -93,6 +93,30 @@ def build_system_prompt() -> str:
     )
 
 
+def _section_task_description(section_key: SectionKey, word_target: str) -> str:
+    if section_key == SectionKey.PROPOSED_SOLUTION:
+        return (
+            "Write the 'recommended approach' narrative for the Proposed "
+            "Solution section — do not restate the project scope verbatim "
+            "(it is shown to you for context only and is inserted separately "
+            "above your text). Explain, in 1-2 tight paragraphs, the "
+            f"approach recommended to address the project scope and goals "
+            f"given. Target length: {word_target}."
+        )
+    if section_key == SectionKey.DELIVERABLES:
+        return (
+            "Write the Deliverables section. The raw sales notes on "
+            "recommended services above fold services and deliverables "
+            "together — separate and expand them into a clear list of "
+            "concrete deliverables the client will receive, one per line, "
+            f"as short phrases (not full sentences). Target length: "
+            f"{word_target}."
+        )
+    raise ValueError(
+        f"No task description for non-generated section: {section_key.value}"
+    )
+
+
 def build_user_prompt(proposal: Proposal, section_key: SectionKey) -> str:
     if section_key not in GENERATED_SECTION_KEYS:
         raise ValueError(
@@ -101,31 +125,71 @@ def build_user_prompt(proposal: Proposal, section_key: SectionKey) -> str:
 
     facts = _canonical_facts_block(proposal)
     word_target = WORD_TARGETS[section_key]
-
-    if section_key == SectionKey.PROPOSED_SOLUTION:
-        task = (
-            "Write the 'recommended approach' narrative for the Proposed "
-            "Solution section — do not restate the project scope verbatim "
-            "(it is shown to you for context only and is inserted separately "
-            "above your text). Explain, in 1-2 tight paragraphs, the "
-            f"approach recommended to address the project scope and goals "
-            f"given. Target length: {word_target}."
-        )
-    elif section_key == SectionKey.DELIVERABLES:
-        task = (
-            "Write the Deliverables section. The raw sales notes on "
-            "recommended services above fold services and deliverables "
-            "together — separate and expand them into a clear list of "
-            "concrete deliverables the client will receive, one per line, "
-            f"as short phrases (not full sentences). Target length: "
-            f"{word_target}."
-        )
-    else:
-        raise ValueError(
-            f"build_user_prompt called for a non-generated section: {section_key.value}"
-        )
+    task = _section_task_description(section_key, word_target)
 
     return f"{task}\n\nFacts:\n{facts}"
+
+
+def _sibling_summary_block(proposal: Proposal, section_key: SectionKey) -> str:
+    """Short context from every other section so a regenerated section doesn't
+    contradict what the rest of the proposal already says (architecture.md §4
+    point 3) — truncated summaries, not full text, to keep the call cheap and
+    avoid the prompt growing unbounded as proposals grow. Numeric/factual
+    consistency (pricing, dates, client name) is already guaranteed by the
+    canonical facts layer regardless of this block — this is only a narrative
+    consistency aid, so truncation losing a mid-sentence detail is an accepted
+    limitation (see docs/edge-cases.md).
+    """
+    lines = []
+    for section in proposal.sections:
+        if section.section_key == section_key:
+            continue
+        collapsed = " ".join(section.content.split())
+        summary = collapsed[:160] + ("…" if len(collapsed) > 160 else "")
+        lines.append(f"- {section.title}: {summary}")
+    return "\n".join(lines) if lines else "(no other sections yet)"
+
+
+def build_regeneration_prompt(
+    proposal: Proposal, section_key: SectionKey, instruction: str
+) -> str:
+    """User-turn prompt for a single-section regeneration call. Layers, per
+    architecture.md §4: canonical facts (point 4) + sibling-section summaries
+    (point 3) + the mandatory salesperson instruction (point 5) — the
+    instruction is additive to the house tone already baked into
+    build_system_prompt(), never a replacement for it (decisions #11).
+    """
+    if section_key not in GENERATED_SECTION_KEYS:
+        raise ValueError(
+            f"build_regeneration_prompt called for a non-generated section: {section_key.value}"
+        )
+
+    facts = _canonical_facts_block(proposal)
+    word_target = WORD_TARGETS[section_key]
+    task = _section_task_description(section_key, word_target)
+    siblings = _sibling_summary_block(proposal, section_key)
+
+    return (
+        f"{task}\n\n"
+        f"Facts:\n{facts}\n"
+        "Other sections of this proposal, for consistency only — do not "
+        f"repeat them, just don't contradict them:\n{siblings}\n\n"
+        "The salesperson has asked for this specific change on top of the "
+        f"house tone and task above:\n{instruction.strip()}"
+    )
+
+
+def pinned_prefix_for_section(proposal: Proposal, section_key: SectionKey) -> str:
+    """The verbatim pinned-fact prefix a generated section's final content is
+    built on top of. Single source of truth shared by intake_service.py
+    (first assembly) and services/regeneration_service.py (every
+    regeneration) so the two can never drift apart on the exact wording.
+    """
+    if section_key == SectionKey.PROPOSED_SOLUTION:
+        return f"Scope:\n{proposal.project_scope}"
+    if section_key == SectionKey.DELIVERABLES:
+        return f"Services & Deliverables:\n{proposal.recommended_services}"
+    raise ValueError(f"No pinned prefix defined for section: {section_key.value}")
 
 
 def assemble_section_content(section_key: SectionKey, pinned_content: str, generated_text: str) -> str:

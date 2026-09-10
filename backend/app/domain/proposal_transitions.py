@@ -4,7 +4,11 @@ Pure domain logic: no I/O. Callers (services/) pass in already-loaded ORM entiti
 and are responsible for persisting the mutations these functions make.
 """
 
-from app.domain.exceptions import ApprovalGuardError, InvalidTransitionError
+from app.domain.exceptions import (
+    ApprovalGuardError,
+    InvalidTransitionError,
+    SectionNotEditableError,
+)
 from app.models.proposal import Proposal, ProposalStatus, SectionApprovalStatus, SectionKey
 
 # Every legal edge in docs/system-flow.md §3, plus the *_FAILED substates and their
@@ -50,6 +54,22 @@ ALLOWED_TRANSITIONS: dict[ProposalStatus, frozenset[ProposalStatus]] = {
     ProposalStatus.DELIVERED: frozenset({ProposalStatus.CLOSED}),
     ProposalStatus.CLOSED: frozenset(),
 }
+
+
+# Statuses a manual section edit is allowed from. Same set that regeneration
+# is allowed from (docs/system-flow.md §3: "IN_REVIEW (salesperson edits/regens)"),
+# plus PENDING_APPROVAL/APPROVED where a content change must force the proposal
+# back to IN_REVIEW rather than being silently rejected (see
+# app.domain.regeneration.regeneration_invalidates_approval, which the caller
+# uses to decide whether that invalidation applies).
+EDITABLE_SECTION_STATUSES: frozenset[ProposalStatus] = frozenset(
+    {ProposalStatus.IN_REVIEW, ProposalStatus.PENDING_APPROVAL, ProposalStatus.APPROVED}
+)
+
+
+def assert_section_editable(section_key: SectionKey, status: ProposalStatus) -> None:
+    if status not in EDITABLE_SECTION_STATUSES:
+        raise SectionNotEditableError(section_key, status)
 
 
 def assert_transition_allowed(current: ProposalStatus, target: ProposalStatus) -> None:

@@ -4,7 +4,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.proposal import Proposal
+from app.domain.content_origin import content_origin_after_manual_edit
+from app.domain.exceptions import SectionNotFoundError
+from app.domain.proposal_transitions import assert_section_editable, transition_proposal
+from app.domain.regeneration import regeneration_invalidates_approval
+from app.models.proposal import (
+    Proposal,
+    ProposalStatus,
+    SectionApprovalStatus,
+    SectionKey,
+)
+from app.utils.logger import logger
 
 
 async def list_proposals(
@@ -30,3 +40,44 @@ async def get_proposal_by_id(
     )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def update_section_content(
+    db: AsyncSession, proposal: Proposal, section_key: SectionKey, content: str
+) -> Proposal:
+    """Persist a salesperson's manual edit to a single section.
+
+    Only touches the targeted section (CLAUDE.md: sibling content/version/origin
+    must remain untouched). Marks the section `human_edited` or
+    `human_edited_after_generation` (see domain/content_origin.py) and resets
+    its approval status to `pending` — an edit is a content change, so a prior
+    per-section approval no longer applies to what's on screen now. If the
+    Proposal itself was PENDING_APPROVAL or APPROVED, that approval is likewise
+    invalidated and the Proposal is forced back to IN_REVIEW (same rule as
+    regeneration — docs/decisions.md #9).
+    """
+    section = next(
+        (s for s in proposal.sections if s.section_key == section_key), None
+    )
+    if section is None:
+        raise SectionNotFoundError(section_key)
+
+    assert_section_editable(section_key, proposal.status)
+
+    section.content = content
+    section.content_origin = content_origin_after_manual_edit(section.content_origin)
+    section.approval_status = SectionApprovalStatus.PENDING
+    section.version += 1
+
+    if regeneration_invalidates_approval(proposal.status):
+        transition_proposal(proposal, ProposalStatus.IN_REVIEW)
+
+    await db.commit()
+    await db.refresh(proposal)
+    logger.info(
+        "Section '%s' manually edited on proposal %s (version %s)",
+        section_key.value,
+        proposal.id,
+        section.version,
+    )
+    return proposal

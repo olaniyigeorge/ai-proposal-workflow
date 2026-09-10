@@ -47,6 +47,43 @@ class RegenerationInstructionRequiredError(DomainError):
         )
 
 
+class SectionNotFoundError(DomainError):
+    """Raised when a section_key doesn't correspond to a section on the proposal."""
+
+    def __init__(self, section_key: SectionKey) -> None:
+        self.section_key = section_key
+        super().__init__(f"Section '{section_key.value}' not found on this proposal")
+
+
+class SectionNotEditableError(DomainError):
+    """Raised when a manual edit is attempted while the Proposal is in a status
+    that has no defined edit path (e.g. GENERATING, DOCUMENT_READY, DELIVERED).
+    """
+
+    def __init__(self, section_key: SectionKey, status: ProposalStatus) -> None:
+        self.section_key = section_key
+        self.status = status
+        super().__init__(
+            f"Section '{section_key.value}' cannot be edited while the proposal "
+            f"is {status.value}"
+        )
+
+
+class SectionNotRegenerableError(DomainError):
+    """Raised when regeneration is attempted on a section that has no
+    AI-generated content to regenerate — a template-pinned section
+    (Introduction, Timeline, Pricing, Next Steps; see
+    domain/generation.py GENERATED_SECTION_KEYS and architecture.md §4 point 4).
+    """
+
+    def __init__(self, section_key: SectionKey) -> None:
+        self.section_key = section_key
+        super().__init__(
+            f"Section '{section_key.value}' has no AI-generated content and "
+            "cannot be regenerated"
+        )
+
+
 class SectionGenerationError(DomainError):
     """Raised when a Claude call for a section fails during a generation job.
 
