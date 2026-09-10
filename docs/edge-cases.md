@@ -4,6 +4,42 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-10 — A flaky Claude call must not burn one of the salesperson's 3 regeneration attempts
+
+**The gap (business view):** The 3-attempt cap (decisions #13) exists to force a directed, converging regeneration rather than aimless retries — but if a transient failure (rate limit, timeout, a momentary API outage) eats one of only 3 attempts, the salesperson is punished for infrastructure flakiness, not their own instruction quality. Losing a third of their budget to something entirely outside their control is exactly the kind of "the tool wasted my time" moment that kills trust in an AI feature, especially right when they're trying to get a proposal out the door.
+
+**The fix (implemented 2026-09-10, Phase 4):** `ProposalSection.regeneration_count` — the value the 3-attempt cap actually checks — is only incremented in `regeneration_service.regenerate_section()` *after* `generate_text()` succeeds. A `ClaudeGenerationError` (rate limit, timeout, refusal, empty response) is caught, recorded in `regeneration_log` with `outcome: "failed"` and the error message (so the salesperson can still see it happened and roughly why), and the function returns without touching `regeneration_count`, `content`, `version`, or `approval_status` — the section is left exactly as it was, per CLAUDE.md's "a failed call must leave the prior state intact."
+
+**Where it lives:** `backend/app/services/regeneration_service.py` (`regenerate_section`), test `test_regeneration_job_failure_does_not_burn_cap_attempt`.
+
+**Open follow-up:** a salesperson who mistypes an instruction (e.g. a typo that produces a *technically successful* but useless Claude response) still burns a real attempt — there's no distinction between "Claude failed to respond" and "Claude responded but the salesperson didn't like it," nor should there be; only genuine call failures are free retries by design. The escape hatch for a cap-exhausted section is unchanged and unlimited: manual editing (Phase 3) has no attempt cap.
+
+---
+
+## 2026-09-10 — Concurrent writers can silently clobber each other's section edits or regenerations
+
+**The gap (business view):** Nothing in Phase 3 or Phase 4 detects two people (or one person in two tabs) changing the same section at nearly the same time. If salesperson A edits a section by hand while salesperson B's regeneration job for that same section is still in flight, whichever write commits last simply overwrites the other with no warning — the loser's work vanishes without any error, undo, or record that a conflict even happened. This is exactly the "optimistic concurrency" risk architecture.md §6 already named as a general requirement ("use a version/updated-at check... surface a conflict rather than losing data"), now concrete: Phase 4 introduced a second, *asynchronous* writer (the regeneration background job) racing against Phase 3's synchronous edit endpoint on the same row, which is a materially higher-probability collision than two synchronous edits ever were, since the regeneration job can be in flight for several seconds while its target section stays fully editable in the UI the whole time.
+
+**The fix:** not implemented — both `update_section_content()` and `regenerate_section()` read-modify-write a `ProposalSection` with no version check, so this remains a real, live gap, not a theoretical one. Flagged here explicitly rather than silently deferred, per architecture.md §6.
+
+**Where it lives:** `backend/app/services/proposal_service.py::update_section_content`, `backend/app/services/regeneration_service.py::regenerate_section` — both would need to compare an expected `version` (or `updated_at`) against the current row inside the same transaction and raise a conflict (409) instead of writing, if a caller's read is stale.
+
+**Open follow-up:** given the single-tenant, single-role, no-ownership-restriction design (decisions #21), the realistic collision is "two tabs of the same salesperson" or "salesperson edits while their own earlier regeneration for that section is still running" more often than two different salespeople — worth confirming whether that narrower risk still justifies the extra complexity of version-checked writes before building it. Note `RegenerateSectionButton`'s `isRegenerating` state only disables *its own* trigger while a job is in flight — it does not currently disable the sibling `SectionEditor`'s "Edit Content" button for the same section (the two components don't share state), so a salesperson can still start a manual edit on a section while that section's own regeneration job is still running. A shared "this section is busy" flag between the two components would close that specific window cheaply, without needing full version-checked writes.
+
+---
+
+## 2026-09-10 — Truncated sibling summaries could still let a regenerated section drift narratively
+
+**The gap (business view):** Per architecture.md §4 point 3, a regeneration call includes short summaries of every other section (not full text) so the new text doesn't contradict the rest of the proposal. Those summaries are a blunt character-count truncation (`content[:160]`) of each sibling section's actual content, not a real summary — if a sibling's most relevant detail happens to fall after character 160, the regenerated section never sees it and could still narratively drift (e.g. Deliverables lists something Proposed Solution's cut-off tail actually promised). The canonical facts layer (client name, dates, pricing) is unaffected — those are passed verbatim regardless — so this is a narrative-consistency risk only, not a numeric/factual one.
+
+**The fix (accepted, not eliminated):** architecture.md §4 point 8 explicitly marks a real consistency pass (a secondary check that flags contradictions) as optional/deferred, and this project has only two sections that are ever AI-generated (Proposed Solution, Deliverables — see `docs/edge-cases.md` "Generated sections run long"), which narrows the realistic collision surface considerably versus the general N-section case the architecture doc was written for. Truncation was chosen over a real summarization call to avoid doubling Claude spend (one summarization call per sibling, per regeneration) for a low-probability, low-severity failure mode.
+
+**Where it lives:** `backend/app/domain/generation.py::_sibling_summary_block`.
+
+**Open follow-up:** if this turns out to cause visible contradictions in practice, the cheapest fix is raising the truncation length before reaching for a real summarization call or a consistency-check pass — no evidence yet that 160 characters is actually too short for either of the two generated sections' summaries.
+
+---
+
 ## 2026-09-09 — Duplicate intake beyond webhook retries
 
 **The gap:** The original idempotency key (`hash(timestamp + email_address)`, `docs/decisions.md` #4) only protects against *n8n retrying a failed delivery of the same Sheet row* — the `Timestamp` column is identical on a retry because it's the same row. It does **not** protect against a human genuinely submitting the same request twice (e.g. a salesperson re-filling the Google Form for the same client because they weren't sure the first one went through, or the client verbally re-requesting the same thing). That second submission gets a *new* `Timestamp` from Google Forms, so the old key treats it as a brand-new proposal — duplicate `Proposal` rows for what is substantively one request.
@@ -48,11 +84,11 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 **The gap (business view):** A salesperson spends 10 minutes tightening a section's wording, then hits regenerate (or a background job does), and the edit vanishes — the section goes back to the AI version. The time spent editing is wasted and the salesperson loses trust in the edit feature. This is the highest-friction failure mode in the review flow because it punishes the exact action (editing) that's supposed to be the value add.
 
-**The fix (proposed):** content_origin tracking (already in schema: `human_edited`, `human_edited_after_generation`) gates regeneration. Regenerating a `human_edited` section requires explicit confirmation in the UI ("this section has manual edits — regenerate will replace them"). The 3-attempt cap (decisions #13) limits how often this can happen per section. Sibling sections must not be touched by a single-section regenerate (CLAUDE.md constraint) — that protects the rest of the proposal from collateral damage.
+**The fix (implemented 2026-09-10, Phase 4):** `RegenerateSectionButton` (`web-app/components/proposals/RegenerateSectionButton.tsx`) shows a `window.confirm` warning before submitting a regenerate call against any section whose `content_origin` is `human_edited` or `human_edited_after_generation` — "this section has manual edits — regenerating will replace them, this cannot be undone." The 3-attempt cap (decisions #13) limits how often this can happen per section. Sibling sections are never touched by a single-section regenerate (CLAUDE.md constraint; covered by `test_regeneration_job_success_updates_only_targeted_section`).
 
-**Where it lives:** already partially in schema + transition rules; the UI confirmation dialog is the missing piece in Phase 4 (RegenerateSectionButton).
+**Where it lives:** `web-app/components/proposals/RegenerateSectionButton.tsx` (confirm dialog), `backend/app/domain/content_origin.py` (the origin-flip rules this confirmation is warning about).
 
-**Open follow-up:** confirm whether regenerating a human-edited section should auto-set content_origin back to `ai_generated` or to `human_edited_after_generation` — the latter preserves the record that a human touched it before the regenerate, which is useful for audit. Current enum has both; pick one and document it.
+**Open follow-up — this guard is UI-only, not backend-enforced.** The FastAPI endpoint (`POST /proposals/{id}/sections/{key}/regenerate`) does not itself require any confirmation or check prior content_origin before overwriting — "hiding a button isn't access control" (CLAUDE.md) technically doesn't apply here since this isn't a security boundary, but it does mean a second frontend, a script, or a direct API call bypasses the warning entirely and silently destroys the human edit. If a second client ever calls this API, revisit whether the backend should require an explicit `confirm_overwrite: true` flag when `content_origin` is already human-touched, rather than relying on any one frontend to ask.
 
 ---
 
@@ -72,11 +108,11 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 **The gap (business view):** A salesperson regenerates a section 2–3 times to get it right, each time typing a fresh instruction from memory ("more formal", "shorter", "focus on ROI"). There's no record of what they asked on previous attempts, so they repeat themselves, refine by guesswork, or give up after the cap. The 3-attempt cap (#13) becomes frustrating rather than a useful constraint — and the salesperson can't tell whether the last regeneration actually addressed what they meant. For a creative-writing task that's meant to converge, losing the instruction trail per section wastes attempts and degrades the output.
 
-**The fix (proposed):** The regeneration endpoint (Phase 4) supports a per-section regeneration-suggestion log: each regeneration call records the instruction supplied + a short note/context the salesperson optionally attaches, so the UI can show the attempt history for that section ("attempt 1: 'make more formal' → attempt 2: 'shorten, keep pricing facts' → attempt 3: 'lead with the ROI line'"). This is not auto-generated content — it's the salesperson's own instruction trail, surfaced so they don't lose what they're trying to say across attempts. The cap (3) still applies; the log just makes each attempt informed rather than amnesiac. Storage: a small per-section list on the section (or a separate regenerate-history table) — confirm schema shape in Phase 4. The instruction itself is already mandatory per #13; the log is the visibility layer on top.
+**The fix (implemented 2026-09-10, Phase 4):** `ProposalSection.regeneration_log` (JSON column, migration `8277db7b3a4f`) — an append-only list, one entry per regeneration attempt: `{instruction, attempted_at, outcome, resulting_version | error}`. `RegenerateSectionButton` renders the full history above the instruction textarea whenever a section already has attempts, each one tagged succeeded/failed. The cap (3) counts against the section's `regeneration_count`, not the log length, so a failed attempt still shows in the trail (see the "failed regeneration must not burn a cap attempt" entry below) without spending one of the 3 real tries.
 
-**Where it lives:** Phase 4 regeneration service + endpoint (records instruction per call), Phase 4/regenerate UI (shows attempt history + current instruction). No schema change required if stored as a JSON list on ProposalSection; a separate table if queryability/audit matters. Decide in Phase 4.
+**Where it lives:** `backend/app/models/proposal.py` (`regeneration_log` column), `backend/app/services/regeneration_service.py` (appends an entry on both success and failure), `backend/app/schemas/proposal.py` (`RegenerationLogEntry`), `web-app/components/proposals/RegenerateSectionButton.tsx` (renders it). Tests: `test_regeneration_job_success_updates_only_targeted_section`, `test_regeneration_job_failure_does_not_burn_cap_attempt`.
 
-**Open follow-up:** whether the suggestion log is editable/deletable by the salesperson (likely yes — it's their notes) vs append-only (cleaner audit). Default: append-only for the instruction that was actually sent, editable note field optional — confirm before building.
+**Resolved follow-up (decisions #13b):** append-only, no edit/delete — matches "cleaner audit" over "salesperson's editable notes," since the log records what was actually *sent* to Claude, not a scratchpad. If a salesperson wants to revise their intent, that's simply their next attempt's instruction.
 
 ---
 
