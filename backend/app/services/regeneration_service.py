@@ -9,6 +9,7 @@ call that actually produced new content spends an attempt (see
 docs/edge-cases.md "Failed regeneration must not burn a cap attempt").
 """
 
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -30,7 +31,9 @@ from app.domain.regeneration import (
     assert_section_is_regenerable,
     regeneration_invalidates_approval,
 )
+from app.models.claude_call_log import ClaudeCallStatus, ClaudeCallType
 from app.models.proposal import Proposal, ProposalSection, ProposalStatus, SectionApprovalStatus, SectionKey
+from app.services.claude_log_service import record_claude_call
 from app.services.proposal_service import get_proposal_by_id
 from app.utils.logger import logger
 
@@ -105,9 +108,10 @@ async def regenerate_section(
     system_prompt = build_system_prompt()
     user_prompt = build_regeneration_prompt(proposal, section_key, instruction)
     attempted_at = datetime.now(timezone.utc).isoformat()
+    started_at = time.monotonic()
 
     try:
-        generated_text = await generate_text(system_prompt, user_prompt)
+        result = await generate_text(system_prompt, user_prompt)
     except ClaudeGenerationError as exc:
         logger.warning(
             "Regeneration failed for proposal %s section %s: %s",
@@ -124,11 +128,40 @@ async def regenerate_section(
                 "error": str(exc),
             },
         ]
+        await record_claude_call(
+            db,
+            proposal_id=proposal.id,
+            section_key=section_key.value,
+            call_type=ClaudeCallType.REGENERATION,
+            status=ClaudeCallStatus.FAILED,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            instruction=instruction,
+            error_message=str(exc),
+        )
         await db.commit()
         return
 
+    await record_claude_call(
+        db,
+        proposal_id=proposal.id,
+        section_key=section_key.value,
+        call_type=ClaudeCallType.REGENERATION,
+        status=ClaudeCallStatus.SUCCEEDED,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        duration_ms=int((time.monotonic() - started_at) * 1000),
+        instruction=instruction,
+        model=result.model,
+        response_text=result.text,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        stop_reason=result.stop_reason,
+    )
+
     final_content = assemble_section_content(
-        section_key, pinned_prefix_for_section(proposal, section_key), generated_text
+        section_key, pinned_prefix_for_section(proposal, section_key), result.text
     )
 
     section.content = final_content
