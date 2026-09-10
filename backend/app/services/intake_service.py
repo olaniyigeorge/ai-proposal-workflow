@@ -141,12 +141,18 @@ async def process_intake(
 
     # actor=None: system-originated (n8n intake), no salesperson identity
     # involved at creation time — see docs/decisions.md #20.
+    #
+    # Deliberately no company_name/client_name/etc. in description or
+    # metadata here — those are PII per docs/reference/data-retention-policy.md,
+    # already stored on the Proposal row itself (which this entry references
+    # by proposal_id), and the policy is explicit that "operational logs
+    # should avoid storing the actual PII/business payload whenever
+    # possible." The proposal_id foreign key is the entity reference.
     record_activity(
         db,
         proposal_id=proposal.id,
         event_type=ActivityEventType.CREATED,
-        description=f"Proposal created from intake for {payload.company_name}",
-        metadata={"company_name": payload.company_name},
+        description="Proposal created from intake",
     )
 
     await db.commit()
