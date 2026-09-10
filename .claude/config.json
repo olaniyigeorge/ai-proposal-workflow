@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./secrets/*)",
+      "Read(./.env*)",
+      "Edit(./config/production.json)",
+      "Write(./deploy/*)",
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)"
+    ]
+  }
+}

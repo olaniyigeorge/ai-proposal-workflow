@@ -1,0 +1,10 @@
+# Ignore environment variables and sensitive keys
+.env
+.env.*
+*.pem
+certs/
+
+# Ignore internal notes or sensitive data
+private/
+**/internal-docs/*
+db_dumps/
