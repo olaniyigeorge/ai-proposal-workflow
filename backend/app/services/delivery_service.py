@@ -128,13 +128,19 @@ async def deliver_proposal(
             )
         )
         transition_proposal(proposal, ProposalStatus.DELIVERY_FAILED)
+        # No recipient email in description/metadata here — an SMTP/provider
+        # error message can echo the address back (e.g. "550 rejected:
+        # x@y.com"), and per docs/reference/data-retention-policy.md,
+        # operational logs should avoid storing PII whenever possible. The
+        # detailed error (which DOES need the recipient for someone to act
+        # on it) already lives on DeliveryRecord.error_message — this entry
+        # only needs to say that it happened, not repeat the PII-bearing text.
         record_activity(
             db,
             proposal_id=proposal.id,
             event_type=ActivityEventType.DELIVERY_FAILED,
-            description=f"Delivery failed: {exc}",
+            description="Delivery failed — see DeliveryRecord for details",
             actor=actor,
-            metadata={"error": str(exc)},
         )
         await db.commit()
         return
@@ -149,13 +155,14 @@ async def deliver_proposal(
         )
     )
     transition_proposal(proposal, ProposalStatus.DELIVERED)
+    # No client_email here either — same PII-minimization rule as above;
+    # DeliveryRecord.recipient_email is the record of who it went to.
     record_activity(
         db,
         proposal_id=proposal.id,
         event_type=ActivityEventType.DELIVERED,
-        description=f"Proposal delivered to {proposal.client_email}",
+        description="Proposal delivered to client",
         actor=actor,
-        metadata={"recipient_email": proposal.client_email},
     )
     await db.commit()
     logger.info("Proposal %s delivered to %s", proposal.id, proposal.client_email)
