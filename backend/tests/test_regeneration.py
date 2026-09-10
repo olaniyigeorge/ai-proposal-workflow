@@ -11,7 +11,7 @@ import pytest_asyncio
 from httpx import AsyncClient
 
 import app.services.regeneration_service as regeneration_service
-from app.adapters.claude_client import ClaudeGenerationError
+from app.adapters.claude_client import ClaudeCallResult, ClaudeGenerationError
 from app.domain.exceptions import (
     RegenerationCapExceededError,
     RegenerationInstructionRequiredError,
@@ -33,6 +33,12 @@ from app.services.proposal_service import get_proposal_by_id
 from tests.conftest import TestAsyncSessionLocal
 
 AUTH_HEADERS = {"Authorization": "Bearer dev-salesperson-token"}
+
+
+def _fake_result(text: str) -> ClaudeCallResult:
+    return ClaudeCallResult(
+        text=text, model="claude-test", input_tokens=10, output_tokens=20, stop_reason="end_turn"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -248,8 +254,8 @@ async def test_regeneration_job_success_updates_only_targeted_section(
     proposal = await _persist(db_session, _make_full_proposal())
     proposal_id = proposal.id
 
-    async def fake_generate_text(system_prompt: str, user_prompt: str) -> str:
-        return "Brand new approach text."
+    async def fake_generate_text(system_prompt: str, user_prompt: str) -> ClaudeCallResult:
+        return _fake_result("Brand new approach text.")
 
     monkeypatch.setattr(regeneration_service, "generate_text", fake_generate_text)
 
@@ -325,10 +331,10 @@ async def test_regeneration_job_respects_cap_at_run_time(db_session, monkeypatch
 
     called = False
 
-    async def fake_generate_text(system_prompt: str, user_prompt: str) -> str:
+    async def fake_generate_text(system_prompt: str, user_prompt: str) -> ClaudeCallResult:
         nonlocal called
         called = True
-        return "should not be reached"
+        return _fake_result("should not be reached")
 
     monkeypatch.setattr(regeneration_service, "generate_text", fake_generate_text)
 
