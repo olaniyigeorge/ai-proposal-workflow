@@ -21,7 +21,6 @@ from app.adapters.pdf_renderer import PdfRenderError, count_pdf_pages, render_pd
 from app.adapters.storage_client import StorageUploadError, upload_pdf
 from app.core.database import AsyncSessionLocal
 from app.domain.document import build_document_filename, render_proposal_html
-from app.domain.exceptions import DocumentAlreadyGeneratedError
 from app.domain.proposal_transitions import transition_proposal
 from app.models.activity_log import ActivityEventType
 from app.models.document import DocumentArtifact
@@ -50,14 +49,26 @@ async def start_document_generation(db: AsyncSession, proposal: Proposal) -> Pro
     """Validate + apply the APPROVED -> DOCUMENT_GENERATING transition
     synchronously (cheap, no I/O — matches start_generation/
     start_section_regeneration). Raises InvalidTransitionError (via
-    transition_proposal) if the proposal isn't APPROVED, or
-    DocumentAlreadyGeneratedError if a DocumentArtifact already exists (the
-    DB unique constraint on proposal_id is the last-resort backstop; this is
-    the friendlier, checked-first guard).
+    transition_proposal) if the proposal isn't APPROVED.
+
+    A proposal can only be APPROVED here a second time after a post-approval
+    edit/regeneration forced it back through IN_REVIEW and it was
+    re-approved (docs/decisions.md #9, #9's follow-up resolved 2026-09-11) —
+    `transition_proposal` itself is what rules out "regenerate while still
+    DOCUMENT_READY/DELIVERED", since status only re-enters APPROVED via a
+    real approval action. So an existing DocumentArtifact found here is
+    always stale content from a prior approval cycle, never a duplicate of
+    the same one — it's deleted so the DB unique constraint on
+    `proposal_id` doesn't block the new row `generate_document` will insert.
+    The regenerated PDF reuses the same deterministic storage path
+    (build_document_filename depends only on client/company name) and
+    `upload_pdf`'s upsert overwrites the old object in place, so no orphaned
+    file is left in Storage either.
     """
     existing = await get_document_artifact(db, proposal.id)
     if existing is not None:
-        raise DocumentAlreadyGeneratedError(proposal.id)
+        await db.delete(existing)
+        await db.flush()
 
     transition_proposal(proposal, ProposalStatus.DOCUMENT_GENERATING)
     await db.commit()
