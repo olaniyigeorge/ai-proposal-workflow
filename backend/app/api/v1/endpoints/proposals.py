@@ -8,7 +8,6 @@ from app.core.database import get_db
 from app.core.security import CurrentSalesperson, get_current_salesperson
 from app.domain.exceptions import (
     ApprovalGuardError,
-    DocumentAlreadyGeneratedError,
     DocumentNotReadyError,
     InvalidTransitionError,
     RegenerationCapExceededError,
@@ -398,10 +397,6 @@ async def generate_document_endpoint(
     try:
         proposal = await start_document_generation(db, proposal)
     except InvalidTransitionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-        ) from exc
-    except DocumentAlreadyGeneratedError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
