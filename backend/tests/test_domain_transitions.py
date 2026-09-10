@@ -11,10 +11,13 @@ from app.domain.exceptions import (
     InvalidTransitionError,
     RegenerationCapExceededError,
     RegenerationInstructionRequiredError,
+    SectionNotEditableError,
 )
 from app.domain.proposal_transitions import (
     ALLOWED_TRANSITIONS,
+    EDITABLE_SECTION_STATUSES,
     all_sections_approved,
+    assert_section_editable,
     pending_section_keys,
     transition_proposal,
 )
@@ -266,3 +269,42 @@ def test_regeneration_allowed_within_cap() -> None:
 )
 def test_regeneration_invalidates_approval(status, expected) -> None:
     assert regeneration_invalidates_approval(status) is expected
+
+
+# ---------------------------------------------------------------------------
+# Section-edit rules (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        ProposalStatus.IN_REVIEW,
+        ProposalStatus.PENDING_APPROVAL,
+        ProposalStatus.APPROVED,
+    ],
+)
+def test_section_editable_in_allowed_statuses(status) -> None:
+    assert_section_editable(SectionKey.INTRODUCTION, status)  # does not raise
+    assert status in EDITABLE_SECTION_STATUSES
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        ProposalStatus.DRAFT,
+        ProposalStatus.GENERATING,
+        ProposalStatus.GENERATION_FAILED,
+        ProposalStatus.REJECTED,
+        ProposalStatus.DOCUMENT_GENERATING,
+        ProposalStatus.DOCUMENT_READY,
+        ProposalStatus.DELIVERING,
+        ProposalStatus.DELIVERED,
+        ProposalStatus.CLOSED,
+    ],
+)
+def test_section_not_editable_outside_allowed_statuses(status) -> None:
+    with pytest.raises(SectionNotEditableError) as exc_info:
+        assert_section_editable(SectionKey.INTRODUCTION, status)
+    assert exc_info.value.status == status
+    assert status not in EDITABLE_SECTION_STATUSES
