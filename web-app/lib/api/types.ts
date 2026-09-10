@@ -83,6 +83,24 @@ export interface ProposalDetailResponse {
   sections: ProposalSectionResponse[];
 }
 
+export interface ClaudeCallLogResponse {
+  id: string;
+  section_key: string;
+  call_type: 'full_generation' | 'regeneration' | string;
+  status: 'succeeded' | 'failed' | string;
+  instruction?: string | null;
+  model?: string | null;
+  system_prompt: string;
+  user_prompt: string;
+  response_text?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  stop_reason?: string | null;
+  duration_ms?: number | null;
+  error_message?: string | null;
+  created_at: string;
+}
+
 export interface ApiErrorDetail {
   code?: string;
   message: string;
