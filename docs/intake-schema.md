@@ -26,13 +26,13 @@ Reference source: PRD "Proposal Intake Fields" + reference Google Form (`https:/
 
 ## Schema drift (form/Sheet changing out from under n8n's mapping)
 
-This file is the source of truth and must be updated *first* whenever a Google Form question changes — before touching the n8n Code node, before assuming FastAPI's Pydantic model needs to change. Three drift shapes, in order of how detectable they are:
+This file is the source of truth and must be updated *first* whenever a Google Form question changes — before touching the n8n Code node, before assuming FastAPI's Pydantic model needs to change. Three drift shapes:
 
-- **A required field is renamed/removed on the form** → the Sheet column n8n's Code node looks for disappears → FastAPI 422s (correct, by design). Today nothing in n8n routes that failure anywhere — see `edge-cases.md` "No error path when the Google Form drifts out of sync with the canonical intake schema" for the planned n8n error branch (dead-letter Sheet tab or alert on non-2xx from `POST /intake`).
-- **A new field is added to the form** → silently dropped by n8n's Code node until someone updates the mapping. Not detectable by any schema check; the new data simply never arrives. Process fix only (update this doc → n8n mapping → confirm against Pydantic), no code catches this.
-- **A question's wording changes but the column header/canonical key doesn't** → completely undetectable technically; a semantic drift, not a structural one. Same process fix as above.
+- **A required field is renamed/removed on the form** → the Sheet column n8n's Code node looks for disappears → the Code node's own required-field check throws before the HTTP call is even made. **Real gap:** that throw has no `onError` routing in n8n today, so it fails the execution silently rather than reaching n8n's `Alert` node or FastAPI's `INTAKE_SCHEMA_DRIFT` logging (`backend/app/main.py`) — see `edge-cases.md` for the two options being weighed (wire the Code node's error output, or have it forward instead of throw so the 422 path is the single detector).
+- **A new field is added to the form** → n8n's Code node passes the extra column through under its raw (unmapped) header rather than dropping it, so it hits `IntakePayload`'s `extra="forbid"` and 422s — caught, both by n8n's `Alert`-node error branch (once wired to a real channel) and by the backend's `INTAKE_SCHEMA_DRIFT` log tag.
+- **A question's wording changes but the column header/canonical key doesn't** → completely undetectable technically; a semantic drift, not a structural one. Process fix only (update this doc → n8n mapping → confirm against Pydantic) — no code or log tag will ever catch this.
 
-None of this is automatable away — FastAPI's 422 is the only structural backstop (decisions #5), and it only catches the first shape.
+FastAPI's 422 (logged as `INTAKE_SCHEMA_DRIFT`) plus a bad/missing shared secret (logged as `INTAKE_AUTH_FAILED`) are the structural backstops (decisions #5) — both independent of whether n8n's own alerting is wired for a given failure. See `edge-cases.md` for the full writeup and the one still-open gap.
 
 ## Template ≠ intake fields (must reconcile)
 
