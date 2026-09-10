@@ -319,7 +319,10 @@ async def test_delivery_success_logs_delivered(db_session, monkeypatch) -> None:
 
     entries = await list_activity_for_proposal(db_session, proposal.id)
     assert [e.event_type for e in entries] == [ActivityEventType.DELIVERED]
-    assert entries[0].event_metadata["recipient_email"] == "alice@acme.com"
+    # No PII (recipient email) in the activity entry — see
+    # docs/reference/data-retention-policy.md; DeliveryRecord holds that.
+    assert "alice@acme.com" not in entries[0].description
+    assert "recipient_email" not in entries[0].event_metadata
 
 
 # ---------------------------------------------------------------------------
