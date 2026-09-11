@@ -99,7 +99,7 @@ export function AppShell({ children }: AppShellProps) {
               Proposal Workflow
             </div>
             <div className="text-[11px] text-[#5c646c] font-medium mt-1">
-              Salesperson Review UI
+              Salesperson Review App
             </div>
           </div>
         </div>
