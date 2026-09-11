@@ -95,6 +95,32 @@ def test_render_proposal_html_includes_brand_and_sections_in_order() -> None:
     assert intro_pos < solution_pos < deliverables_pos
 
 
+def test_render_proposal_html_uses_flowing_prose_not_bordered_cards() -> None:
+    """Revised 2026-09-11 (docs/edge-cases.md): sections must read as
+    continuous typeset prose — numbered running headings over real
+    paragraph/list markup — not boxed, bordered cards around a
+    white-space:pre-wrap blob.
+    """
+    proposal = _make_proposal()
+    html_out = render_proposal_html(proposal)
+    assert "<p>" in html_out
+    assert "white-space: pre-wrap" not in html_out
+    assert '<span class="num">01</span>' in html_out
+    # The section body itself has no card border/background/radius left —
+    # only the unrelated header "brand" pill badge still uses border-radius.
+    section_css = html_out[html_out.index(".section {") : html_out.index(".doc-footer")]
+    assert "border-radius" not in section_css
+    assert "border:" not in section_css
+
+
+def test_render_proposal_html_renders_numbered_lines_as_ordered_list() -> None:
+    proposal = _make_proposal()
+    next_steps = next(s for s in proposal.sections if s.section_key == SectionKey.NEXT_STEPS)
+    next_steps.content = "1. Review and approve.\n2. Execute agreement.\n3. Schedule kickoff."
+    html_out = render_proposal_html(proposal)
+    assert "<ol><li>Review and approve.</li><li>Execute agreement.</li><li>Schedule kickoff.</li></ol>" in html_out
+
+
 def test_build_document_filename_is_slugified_and_readable() -> None:
     proposal = _make_proposal()
     filename = build_document_filename(proposal)

@@ -104,9 +104,16 @@ async def test_full_generation_logs_one_call_per_generated_section(
     await generation_service.generate_all_sections(db_session, proposal)
 
     logs = await list_claude_calls_for_proposal(db_session, proposal.id)
-    assert len(logs) == 3  # introduction + proposed_solution + deliverables
+    assert len(logs) == 6  # one per section, all six generated as of 2026-09-11
     section_keys = {log.section_key for log in logs}
-    assert section_keys == {"introduction", "proposed_solution", "deliverables"}
+    assert section_keys == {
+        "introduction",
+        "proposed_solution",
+        "deliverables",
+        "timeline",
+        "pricing",
+        "next_steps",
+    }
     for log in logs:
         assert log.call_type == ClaudeCallType.FULL_GENERATION
         assert log.status == ClaudeCallStatus.SUCCEEDED

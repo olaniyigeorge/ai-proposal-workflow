@@ -16,7 +16,6 @@ from app.domain.exceptions import (
     RegenerationCapExceededError,
     RegenerationInstructionRequiredError,
     SectionNotEditableError,
-    SectionNotRegenerableError,
 )
 from app.domain.generation import build_regeneration_prompt
 from app.domain.proposal_transitions import transition_proposal
@@ -46,25 +45,14 @@ def _fake_result(text: str) -> ClaudeCallResult:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "section_key",
-    [SectionKey.INTRODUCTION, SectionKey.PROPOSED_SOLUTION, SectionKey.DELIVERABLES],
-)
-def test_generated_sections_are_regenerable(section_key) -> None:
+@pytest.mark.parametrize("section_key", list(SectionKey))
+def test_all_sections_are_regenerable(section_key) -> None:
+    """As of 2026-09-11 every section has some generated content — Timeline
+    and Pricing wrap a generated lead-in around the pinned fact, Next Steps
+    is fully generated — so none are excluded here anymore (see
+    domain/generation.py's module docstring and docs/edge-cases.md).
+    """
     assert_section_is_regenerable(section_key)  # does not raise
-
-
-@pytest.mark.parametrize(
-    "section_key",
-    [
-        SectionKey.TIMELINE,
-        SectionKey.PRICING,
-        SectionKey.NEXT_STEPS,
-    ],
-)
-def test_pinned_sections_are_not_regenerable(section_key) -> None:
-    with pytest.raises(SectionNotRegenerableError):
-        assert_section_is_regenerable(section_key)
 
 
 def _make_proposal() -> Proposal:
@@ -118,10 +106,18 @@ def test_build_regeneration_prompt_includes_instruction_and_sibling_summaries() 
     assert "Old approach text." not in prompt  # sibling summary only, not self
 
 
-def test_build_regeneration_prompt_rejects_non_generated_section() -> None:
+def test_build_regeneration_prompt_builds_for_pinned_fact_section() -> None:
+    """TIMELINE wraps a generated lead-in around the pinned, verbatim
+    `proposed_timeline` — the prompt must ask for the lead-in only and never
+    ask the model to restate the date/duration itself.
+    """
     proposal = _make_proposal()
-    with pytest.raises(ValueError):
-        build_regeneration_prompt(proposal, SectionKey.TIMELINE, "shorten it")
+    proposal.sections = [
+        ProposalSection(section_key=SectionKey.TIMELINE, title="Timeline", order_index=3, content="timeline")
+    ]
+    prompt = build_regeneration_prompt(proposal, SectionKey.TIMELINE, "shorten it")
+    assert "timeline" in prompt.lower()
+    assert "do not state" in prompt.lower() or "do not restate" in prompt.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -179,14 +175,18 @@ async def test_start_regeneration_rejects_missing_instruction(db_session) -> Non
 
 
 @pytest.mark.asyncio
-async def test_start_regeneration_rejects_pinned_section() -> None:
+async def test_start_regeneration_allows_timeline_section() -> None:
+    """Timeline (a generated lead-in wrapped around the pinned date/duration,
+    since 2026-09-11) must be startable like any other generated section —
+    it is no longer excluded as a "pinned, nothing to regenerate" section.
+    """
     proposal = _make_full_proposal()
     async with TestAsyncSessionLocal() as db:
         proposal = await _persist(db, proposal)
-        with pytest.raises(SectionNotRegenerableError):
-            await regeneration_service.start_section_regeneration(
-                db, proposal, SectionKey.TIMELINE, "make it shorter"
-            )
+        result = await regeneration_service.start_section_regeneration(
+            db, proposal, SectionKey.TIMELINE, "make it shorter"
+        )
+        assert result is not None
 
 
 @pytest.mark.asyncio
@@ -371,8 +371,20 @@ async def test_regenerate_endpoint_requires_auth(async_client: AsyncClient) -> N
 
 @pytest.mark.asyncio
 async def test_regenerate_endpoint_accepts_and_schedules_job(
-    async_client: AsyncClient,
+    async_client: AsyncClient, monkeypatch
 ) -> None:
+    # Monkeypatched so the background job never opens a real AsyncSessionLocal/
+    # Claude call — running two such live-background-job tests in this file
+    # without this hit a pytest-asyncio + asyncpg cross-event-loop error
+    # ("attached to a different loop") since the pooled connection from
+    # whichever test ran first isn't valid on a later test's own event loop.
+    monkeypatch.setattr(regeneration_service, "AsyncSessionLocal", TestAsyncSessionLocal)
+
+    async def fake_generate_text(system_prompt: str, user_prompt: str) -> ClaudeCallResult:
+        return _fake_result("Generated text.")
+
+    monkeypatch.setattr(regeneration_service, "generate_text", fake_generate_text)
+
     proposal_id = await _seed_proposal_via_db()
     response = await async_client.post(
         f"/api/v1/proposals/{proposal_id}/sections/proposed_solution/regenerate",
@@ -400,16 +412,30 @@ async def test_regenerate_endpoint_rejects_blank_instruction(
 
 
 @pytest.mark.asyncio
-async def test_regenerate_endpoint_rejects_pinned_section(
-    async_client: AsyncClient,
+async def test_regenerate_endpoint_accepts_timeline_section(
+    async_client: AsyncClient, monkeypatch
 ) -> None:
+    """Timeline is a generated-lead-in-plus-pinned-fact section, not an
+    excluded one — the endpoint must accept it like any other section.
+    Monkeypatches the background job's session/Claude call the same way
+    test_generate_endpoint_happy_path does, so this doesn't depend on a real
+    Claude/network call or reuse a pooled DB connection across a different
+    test's event loop.
+    """
+    monkeypatch.setattr(regeneration_service, "AsyncSessionLocal", TestAsyncSessionLocal)
+
+    async def fake_generate_text(system_prompt: str, user_prompt: str) -> ClaudeCallResult:
+        return _fake_result("Generated lead-in.")
+
+    monkeypatch.setattr(regeneration_service, "generate_text", fake_generate_text)
+
     proposal_id = await _seed_proposal_via_db()
     response = await async_client.post(
         f"/api/v1/proposals/{proposal_id}/sections/timeline/regenerate",
         json={"instruction": "make it shorter"},
         headers=AUTH_HEADERS,
     )
-    assert response.status_code == 409
+    assert response.status_code == 202
 
 
 @pytest.mark.asyncio

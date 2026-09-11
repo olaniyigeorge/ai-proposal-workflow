@@ -13,7 +13,11 @@ from sqlalchemy import select
 import app.services.generation_service as generation_service
 from app.adapters.claude_client import ClaudeCallResult, ClaudeGenerationError
 from app.domain.exceptions import InvalidTransitionError, SectionGenerationError
-from app.domain.generation import assemble_section_content, build_user_prompt
+from app.domain.generation import (
+    assemble_section_content,
+    build_user_prompt,
+    normalize_pricing_display,
+)
 from app.domain.proposal_transitions import transition_proposal
 from app.models.proposal import (
     ContentOrigin,
@@ -55,10 +59,40 @@ def make_proposal() -> Proposal:
     )
 
 
-def test_build_user_prompt_rejects_non_generated_section() -> None:
+def test_build_user_prompt_builds_lead_in_task_for_timeline() -> None:
+    """Timeline is generated (a lead-in wrapped around the pinned date/
+    duration) as of 2026-09-11 — the prompt must ask only for the lead-in,
+    never for the model to restate the actual timeline itself.
+    """
     proposal = make_proposal()
-    with pytest.raises(ValueError):
-        build_user_prompt(proposal, SectionKey.TIMELINE)
+    prompt = build_user_prompt(proposal, SectionKey.TIMELINE)
+    assert "lead-in" in prompt.lower()
+    assert "do not state" in prompt.lower()
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("16000", "$16000"),
+        ("16,000 flat fee", "$16,000 flat fee"),
+        ("$16,000", "$16,000"),  # already has a symbol - not doubled
+        ("€5,000", "€5,000"),  # a non-$ currency symbol still counts as "already priced"
+        ("Custom, based on final scope", "Custom, based on final scope"),  # doesn't start with a digit
+        ("", ""),
+    ],
+)
+def test_normalize_pricing_display(raw: str, expected: str) -> None:
+    assert normalize_pricing_display(raw) == expected
+
+
+def test_assemble_section_content_wraps_pinned_fact_for_timeline() -> None:
+    result = assemble_section_content(SectionKey.TIMELINE, "8 weeks", "  Here is the lead-in.  ")
+    assert result == "Here is the lead-in.\n\n8 weeks"
+
+
+def test_assemble_section_content_wraps_pinned_fact_for_pricing() -> None:
+    result = assemble_section_content(SectionKey.PRICING, "$5,000", "  Here is the lead-in.  ")
+    assert result == "Here is the lead-in.\n\n$5,000"
 
 
 def test_assemble_section_content_keeps_pinned_scope_for_proposed_solution() -> None:
@@ -161,7 +195,7 @@ async def test_start_generation_rejects_wrong_state(db_session) -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_all_sections_success_updates_only_generated_sections(
+async def test_generate_all_sections_success_updates_every_section(
     db_session, monkeypatch
 ) -> None:
     proposal = await _persist_proposal(db_session)
@@ -189,15 +223,14 @@ async def test_generate_all_sections_success_updates_only_generated_sections(
     assert by_key[SectionKey.DELIVERABLES].content == "Generated text."
     assert by_key[SectionKey.DELIVERABLES].content_origin == ContentOrigin.AI_GENERATED
 
-    # Sibling sections never touched by generation — content, version, and
-    # origin flag must remain exactly as intake wrote them.
-    assert by_key[SectionKey.TIMELINE].content == "timeline"
-    assert by_key[SectionKey.TIMELINE].content_origin == ContentOrigin.TEMPLATE_DEFAULT
-    assert by_key[SectionKey.TIMELINE].version == 1
-    assert by_key[SectionKey.PRICING].content == "$1"
-    assert by_key[SectionKey.PRICING].content_origin == ContentOrigin.TEMPLATE_DEFAULT
-    assert by_key[SectionKey.NEXT_STEPS].content == "1. Review.\n2. Sign.\n3. Kickoff."
-    assert by_key[SectionKey.NEXT_STEPS].content_origin == ContentOrigin.TEMPLATE_DEFAULT
+    # Timeline/Pricing wrap the generated lead-in around the pinned fact
+    # (fact untouched, verbatim); Next Steps is pure generated content.
+    assert by_key[SectionKey.TIMELINE].content == "Generated text.\n\ntimeline"
+    assert by_key[SectionKey.TIMELINE].content_origin == ContentOrigin.AI_GENERATED
+    assert by_key[SectionKey.PRICING].content == "Generated text.\n\n$1"
+    assert by_key[SectionKey.PRICING].content_origin == ContentOrigin.AI_GENERATED
+    assert by_key[SectionKey.NEXT_STEPS].content == "Generated text."
+    assert by_key[SectionKey.NEXT_STEPS].content_origin == ContentOrigin.AI_GENERATED
 
 
 @pytest.mark.asyncio
@@ -328,8 +361,10 @@ async def test_generate_endpoint_happy_path(
     assert sections["deliverables"]["content"] == "Generated section text."
     assert sections["deliverables"]["content_origin"] == "ai_generated"
     assert "Build a widget factory" in sections["proposed_solution"]["content"]
-    assert sections["timeline"]["content"] == "8 weeks"
-    assert sections["timeline"]["content_origin"] == "template_default"
+    # Timeline is generated too (as of 2026-09-11) — a generated lead-in
+    # wrapped around the pinned, verbatim "8 weeks" fact.
+    assert sections["timeline"]["content"] == "Generated section text.\n\n8 weeks"
+    assert sections["timeline"]["content_origin"] == "ai_generated"
 
 
 @pytest.mark.asyncio
