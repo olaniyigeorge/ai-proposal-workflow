@@ -4,6 +4,18 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-11 — "Closest match" assignment: scoped to manual self-claim, not fuzzy auto-matching
+
+**The gap (business view):** the feature request for self-service Team management asked for a salesperson's display name to be "used for assigning proposals to them (closest match)." Read literally, that could mean fuzzy-matching a proposal's free-text `salesperson_name` (whatever a client or admin typed at intake) against registered display names and auto-suggesting or auto-assigning the best match. CLAUDE.md and decisions #20 explicitly forbid exactly that: "never auto-assign proposal ownership by string-matching this field" — a client typing "Bob" shouldn't silently bind a proposal to whichever salesperson named "Bob S." happens to exist, since a near-miss match assigning the wrong person's name to real client PII is a worse failure than leaving it unassigned for a human to sort out.
+
+**The fix (implemented 2026-09-11, scoped deliberately narrower):** `display_name` is a self-service field a salesperson sets once (`PATCH /auth/me`, unique across the team) and is only ever *written* into a proposal's `salesperson_name` by an explicit, human-clicked self-claim (`POST /proposals/{id}/claim`) — and only when that proposal is genuinely unassigned (`salesperson_name IS NULL`). No fuzzy matching, no auto-suggestion, no code path that reads an existing free-text `salesperson_name` and tries to resolve it to an account. This is a narrower interpretation of "closest match" than the request's literal wording — worth confirming this is what was actually wanted, versus a real fuzzy-match/suggestion feature layered on top later (which would need its own explicit trade-off discussion given the CLAUDE.md constraint above).
+
+**Where it lives:** `backend/app/models/salesperson_account.py` (`display_name`), `backend/app/services/proposal_service.py::claim_proposal`, `backend/app/api/v1/endpoints/{auth,proposals}.py`, `web-app/components/team/TeamList.tsx`, `web-app/components/proposals/ClaimProposalButton.tsx`. `docs/decisions.md` #20.
+
+**Open follow-up:** ownership is now assignable, but not yet *enforced* — any approved salesperson can still edit/approve/reassign-adjacent-actions on any proposal regardless of who claimed it (decisions #21's follow-up, still open). Claiming currently only sets the display label, not an access restriction.
+
+---
+
 ## 2026-09-11 — Production proposal list showed "Invalid or expired token: Not enough segments" while local dev worked fine
 
 **Severity: High** (production-only — the proposals list was completely unusable for a real signed-in user in prod, while looking correctly signed-in in the sidebar the whole time, which makes it a confusing bug to self-diagnose)
