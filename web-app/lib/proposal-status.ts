@@ -228,16 +228,21 @@ export function editInvalidatesApproval(proposal: ProposalDetailResponse): boole
   return proposal.status === 'PENDING_APPROVAL' || proposal.status === 'APPROVED';
 }
 
-// Only these sections have any AI-generated content at all (see
-// backend/app/domain/generation.py GENERATED_SECTION_KEYS) — Timeline,
-// Pricing, and Next Steps are pinned facts/boilerplate with nothing for
-// Claude to regenerate. Introduction is generated (not pinned) specifically
-// so the client's raw intake wording gets paraphrased/cleaned up rather than
-// reaching the client verbatim — see docs/edge-cases.md.
+// Every section has some Claude-generated content as of 2026-09-11 (see
+// backend/app/domain/generation.py GENERATED_SECTION_KEYS) — Timeline and
+// Pricing wrap a generated lead-in around the pinned/verbatim date or price
+// (the number itself is never something Claude is asked to restate), and
+// Next Steps is a fully generated closing paragraph. Introduction is
+// generated (not pinned) specifically so the client's raw intake wording
+// gets paraphrased/cleaned up rather than reaching the client verbatim —
+// see docs/edge-cases.md.
 export const GENERATED_SECTION_KEYS: SectionKey[] = [
   'introduction',
   'proposed_solution',
   'deliverables',
+  'timeline',
+  'pricing',
+  'next_steps',
 ];
 
 export const MAX_REGENERATION_ATTEMPTS = 3;

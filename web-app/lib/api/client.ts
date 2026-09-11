@@ -355,6 +355,28 @@ export async function claimProposal(
   });
 }
 
+export async function unclaimProposal(
+  proposalId: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(`/proposals/${proposalId}/unclaim`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export async function transferProposal(
+  proposalId: string,
+  targetAccountId: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(`/proposals/${proposalId}/transfer`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ target_account_id: targetAccountId }),
+  });
+}
+
 export const api = {
   listProposals,
   getProposal,
@@ -379,4 +401,6 @@ export const api = {
   approveAccount,
   rejectAccount,
   claimProposal,
+  unclaimProposal,
+  transferProposal,
 };

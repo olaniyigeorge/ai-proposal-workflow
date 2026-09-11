@@ -1,8 +1,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getProposal } from '@/lib/api/client';
-import { ProposalDetailResponse } from '@/lib/api/types';
+import { getProposal, getMe, listAccounts } from '@/lib/api/client';
+import { ProposalDetailResponse, SalespersonAccountResponse } from '@/lib/api/types';
 import { ProposalStatusBadge } from '@/components/proposals/ProposalStatusBadge';
 import { SectionApprovalBadge } from '@/components/proposals/SectionApprovalBadge';
 import { ContentOriginBadge } from '@/components/proposals/ContentOriginBadge';
@@ -17,6 +17,8 @@ import { GenerateDocumentButton } from '@/components/proposals/GenerateDocumentB
 import { DocumentPreview } from '@/components/proposals/DocumentPreview';
 import { DeliveryPanel } from '@/components/proposals/DeliveryPanel';
 import { ClaimProposalButton } from '@/components/proposals/ClaimProposalButton';
+import { UnclaimProposalButton } from '@/components/proposals/UnclaimProposalButton';
+import { TransferProposalButton } from '@/components/proposals/TransferProposalButton';
 import { getServerAuthToken } from '@/lib/auth/serverSession';
 import {
   buildRequestMoreInfoMailto,
@@ -45,16 +47,31 @@ export default async function ProposalDetailPage({ params }: PageProps) {
   const { id } = await params;
   let proposal: ProposalDetailResponse | null = null;
   let errorMessage: string | null = null;
+  let currentAccountId: string | null = null;
+  let transferCandidates: SalespersonAccountResponse[] = [];
 
   try {
     const token = await getServerAuthToken();
     proposal = await getProposal(id, token);
+    const me = await getMe(token).catch(() => null);
+    currentAccountId = me?.account_id ?? null;
+
+    if (proposal.salesperson_account_id && proposal.salesperson_account_id === currentAccountId) {
+      const accounts = await listAccounts(token).catch(() => []);
+      transferCandidates = accounts.filter(
+        (a) => a.status === 'approved' && a.display_name && a.id !== currentAccountId
+      );
+    }
   } catch (err: any) {
     if (err?.status === 404) {
       notFound();
     }
     errorMessage = err?.message || 'Failed to load proposal details';
   }
+
+  const isOwner = Boolean(
+    proposal?.salesperson_account_id && proposal.salesperson_account_id === currentAccountId
+  );
 
   if (!proposal) {
     return (
@@ -116,10 +133,24 @@ export default async function ProposalDetailPage({ params }: PageProps) {
               <span className="text-[#c2c7c4]">·</span>
               <span className="font-mono text-[#374151]">{proposal.client_email}</span>
               <span className="text-[#c2c7c4]">·</span>
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-2 flex-wrap">
                 Salesperson:{' '}
                 {proposal.salesperson_name ? (
-                  <strong className="text-[#1f2429]">{proposal.salesperson_name}</strong>
+                  <>
+                    <strong className="text-[#1f2429]">
+                      {proposal.salesperson_name}
+                      {isOwner && <span className="text-[#5c646c] font-normal"> (you)</span>}
+                    </strong>
+                    {isOwner && (
+                      <>
+                        <UnclaimProposalButton proposalId={proposal.id} />
+                        <TransferProposalButton
+                          proposalId={proposal.id}
+                          candidates={transferCandidates}
+                        />
+                      </>
+                    )}
+                  </>
                 ) : (
                   <>
                     <strong className="text-[#9aa0a6] italic">Unassigned</strong>
