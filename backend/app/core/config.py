@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_V1_STR: str = "/api/v1"
 
+    # SQLAlchemy's `echo` used to be tied directly to DEBUG — that's why a
+    # deploy with DEBUG=true (the .env.example default nobody remembered to
+    # flip for prod) logs every single SQL statement, twice over (once via
+    # SQLAlchemy's own "sqlalchemy.engine" logger, once again via root-logger
+    # propagation into app/utils/logger.py's handler). Split into its own
+    # flag, default off — DEBUG can stay on for other purposes without
+    # flooding the logs with SQL.
+    SQL_ECHO: bool = False
+
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./proposals_dev.db"
 
@@ -36,6 +45,14 @@ class Settings(BaseSettings):
     # ~200 word target sections need well under this; headroom for a
     # slightly-over-target response without truncating mid-sentence.
     CLAUDE_MAX_TOKENS: int = 500
+
+    # Data retention (docs/reference/data-retention-policy.md) — enforced by
+    # scripts/enforce_retention.py, not automatically on a timer inside the
+    # API process itself (per CLAUDE.md: long-running/destructive work
+    # doesn't belong inline in a request handler, and this isn't
+    # request-triggered at all — it's a scheduled job).
+    PROPOSAL_RETENTION_MONTHS: int = 24
+    ACTIVITY_LOG_RETENTION_MONTHS: int = 12
 
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
