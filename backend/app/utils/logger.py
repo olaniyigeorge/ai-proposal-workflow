@@ -30,3 +30,13 @@ file_handler.setFormatter(formatter)
 logger.handlers = [
     stream_handler,
 ]  # file_handler
+
+# SQLAlchemy's "sqlalchemy.engine" logger propagates into this root logger by
+# default, printing every SQL statement a second time (once via SQLAlchemy's
+# own logging, once via this module's handler) whenever engine echo is on —
+# and even with echo off, leaving this logger at its default level can still
+# be noisy. Keep it quiet unless someone explicitly wants SQL_ECHO=true, in
+# which case core/database.py's own `echo=True` on the engine is the
+# intended (single) source of that output, not this logger.
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.engine").propagate = False
