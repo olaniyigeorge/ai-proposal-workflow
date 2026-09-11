@@ -47,11 +47,11 @@ export function ApproveSectionButton({
         onClick={approve}
         disabled={!editable || isSubmitting}
         title={editable ? undefined : 'Sections can only be approved while In Review'}
-        className="px-2.5 py-1 rounded bg-emerald-950/60 border border-emerald-800/50 text-emerald-300 text-[11px] font-medium hover:bg-emerald-900/60 disabled:bg-zinc-800/50 disabled:border-zinc-700/50 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors"
+        className="px-2.5 py-1 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-medium hover:bg-emerald-100 disabled:bg-[#f5f6f5] disabled:border-[#d8dbd9] disabled:text-[#9aa0a6] disabled:cursor-not-allowed transition-colors"
       >
         {isSubmitting ? 'Approving…' : 'Approve Section'}
       </button>
-      {error && <span className="text-[11px] text-rose-400">{error}</span>}
+      {error && <span className="text-[11px] text-rose-600">{error}</span>}
     </div>
   );
 }
