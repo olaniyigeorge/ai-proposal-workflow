@@ -47,23 +47,23 @@ export function ApprovalPanel({ proposal }: ApprovalPanelProps) {
   if (status === 'IN_REVIEW') {
     return (
       <div className="space-y-2">
-        {error && <p className="text-xs text-rose-400">{error}</p>}
+        {error && <p className="text-xs text-rose-600">{error}</p>}
         <button
           onClick={() => run('submit', () => submitForApproval(proposal.id))}
           disabled={pending !== null}
-          className="w-full py-2.5 px-4 rounded-lg bg-sky-950/40 border border-sky-800/40 hover:bg-sky-900/40 text-sky-300 font-medium text-xs flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          className="w-full py-2.5 px-4 rounded-lg bg-sky-50 border border-sky-200 hover:bg-sky-100 text-sky-800 font-medium text-xs flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
         >
           <span>{pending === 'submit' ? 'Submitting…' : 'Submit for Approval'}</span>
-          <span className="text-[10px] text-sky-400/70">→ Pending Approval</span>
+          <span className="text-[10px] text-sky-700/70">→ Pending Approval</span>
         </button>
         <button
           onClick={() => run('approve', () => approveProposal(proposal.id))}
           disabled={pending !== null}
-          className="w-full py-2.5 px-4 rounded-lg bg-emerald-950/40 border border-emerald-800/40 hover:bg-emerald-900/40 text-emerald-300 font-medium text-xs flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          className="w-full py-2.5 px-4 rounded-lg bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 font-medium text-xs flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
         >
           <span>{pending === 'approve' ? 'Approving…' : 'Approve Proposal'}</span>
           {remainingPending > 0 && (
-            <span className="text-[10px] text-emerald-400/70">
+            <span className="text-[10px] text-emerald-700/70">
               will approve {remainingPending} remaining
             </span>
           )}
@@ -75,15 +75,15 @@ export function ApprovalPanel({ proposal }: ApprovalPanelProps) {
   if (status === 'PENDING_APPROVAL') {
     return (
       <div className="space-y-2">
-        {error && <p className="text-xs text-rose-400">{error}</p>}
+        {error && <p className="text-xs text-rose-600">{error}</p>}
         <button
           onClick={() => run('approve', () => approveProposal(proposal.id))}
           disabled={pending !== null}
-          className="w-full py-2.5 px-4 rounded-lg bg-emerald-950/40 border border-emerald-800/40 hover:bg-emerald-900/40 text-emerald-300 font-medium text-xs flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          className="w-full py-2.5 px-4 rounded-lg bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 font-medium text-xs flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
         >
           <span>{pending === 'approve' ? 'Approving…' : 'Approve Proposal'}</span>
           {remainingPending > 0 && (
-            <span className="text-[10px] text-emerald-400/70">
+            <span className="text-[10px] text-emerald-700/70">
               will approve {remainingPending} remaining
             </span>
           )}
@@ -94,21 +94,21 @@ export function ApprovalPanel({ proposal }: ApprovalPanelProps) {
             <button
               onClick={() => setReasonPanel('request-changes')}
               disabled={pending !== null}
-              className="flex-1 py-2 px-3 rounded-lg bg-amber-950/30 border border-amber-800/40 hover:bg-amber-900/30 text-amber-300 font-medium text-xs disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 py-2 px-3 rounded-lg bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-800 font-medium text-xs disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             >
               Request Changes
             </button>
             <button
               onClick={() => setReasonPanel('reject')}
               disabled={pending !== null}
-              className="flex-1 py-2 px-3 rounded-lg bg-rose-950/30 border border-rose-800/40 hover:bg-rose-900/30 text-rose-300 font-medium text-xs disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 py-2 px-3 rounded-lg bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 font-medium text-xs disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             >
               Reject
             </button>
           </div>
         ) : (
-          <div className="space-y-2 p-3 rounded-lg border border-zinc-700/60 bg-zinc-900/40">
-            <label className="block text-[11px] font-medium text-zinc-400">
+          <div className="space-y-2 p-3 rounded-lg border border-[#d8dbd9] bg-[#f5f6f5]">
+            <label className="block text-[11px] font-medium text-[#5c646c]">
               {reasonPanel === 'reject' ? 'Reason for rejecting (optional)' : 'What needs to change (optional)'}
             </label>
             <textarea
@@ -116,7 +116,7 @@ export function ApprovalPanel({ proposal }: ApprovalPanelProps) {
               onChange={(e) => setReason(e.target.value)}
               disabled={pending !== null}
               rows={2}
-              className="w-full text-sm text-zinc-100 bg-[#090a0f] p-2.5 rounded-lg border border-zinc-700 focus:border-zinc-500 focus:outline-none disabled:opacity-60"
+              className="w-full text-sm text-[#1f2429] bg-white p-2.5 rounded-lg border border-[#d8dbd9] focus:border-[#9aa0a6] focus:outline-none disabled:opacity-60"
             />
             <div className="flex items-center gap-2">
               <button
@@ -128,7 +128,7 @@ export function ApprovalPanel({ proposal }: ApprovalPanelProps) {
                   )
                 }
                 disabled={pending !== null}
-                className="px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-white text-[11px] font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                className="px-3 py-1.5 rounded bg-[#1f2429] hover:bg-[#111417] text-white text-[11px] font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
               >
                 {pending !== null ? 'Sending…' : `Confirm ${reasonPanel === 'reject' ? 'Reject' : 'Request Changes'}`}
               </button>
@@ -138,7 +138,7 @@ export function ApprovalPanel({ proposal }: ApprovalPanelProps) {
                   setReason('');
                 }}
                 disabled={pending !== null}
-                className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-[11px] font-medium disabled:opacity-60 transition-colors"
+                className="px-3 py-1.5 rounded bg-white hover:bg-[#f5f6f5] border border-[#d8dbd9] text-[#1f2429] text-[11px] font-medium disabled:opacity-60 transition-colors"
               >
                 Cancel
               </button>
@@ -151,7 +151,7 @@ export function ApprovalPanel({ proposal }: ApprovalPanelProps) {
 
   if (status === 'APPROVED') {
     return (
-      <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-xs text-emerald-300">
+      <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
         Approved — all {totalSections} sections signed off. Document generation (Phase 6) is next.
       </div>
     );
