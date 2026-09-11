@@ -68,4 +68,16 @@ class KpiSummaryResponse(BaseModel):
     proposals_by_status: dict[str, int]
     proposals_by_salesperson: dict[str, int]
     period_from: Optional[datetime] = None
-    period_to: Optional[datetime] = None
+class ClientResponseRequest(BaseModel):
+    """Payload the public client page POSTs when the recipient clicks Accept or Decline."""
+    response_type: ClientResponseType
+    feedback_text: Optional[str] = Field(default=None, max_length=2000)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class FeedbackEntryRequest(BaseModel):
+    category: FeedbackCategory
+    text: str = Field(..., min_length=1, max_length=4000)
+
+    model_config = ConfigDict(extra="forbid")

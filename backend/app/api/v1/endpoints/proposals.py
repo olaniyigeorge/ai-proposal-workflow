@@ -81,15 +81,32 @@ def _account_uuid(current: CurrentSalesperson) -> uuid.UUID | None:
 @router.get(
     "",
     response_model=List[ProposalSummaryResponse],
-    summary="List all proposals (salesperson authenticated)",
+    summary="List all proposals (salesperson authenticated) — server-side filters on status/salesperson/date/company/client",
 )
 async def get_proposals(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    status: Optional[str] = Query(default=None, description="Filter by proposal status"),
+    salesperson_name: Optional[str] = Query(default=None, description="Filter by salesperson name (substring match)"),
+    date_from: Optional[datetime] = Query(default=None, description="Filter proposals created on or after this ISO-8601 datetime"),
+    date_to: Optional[datetime] = Query(default=None, description="Filter proposals created on or before this ISO-8601 datetime"),
+    company_name: Optional[str] = Query(default=None, description="Filter by company name (substring match)"),
+    client_name: Optional[str] = Query(default=None, description="Filter by client name (substring match)"),
     db: AsyncSession = Depends(get_db),
     _: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> List[ProposalSummaryResponse]:
-    return await list_proposals(db, skip=skip, limit=limit)
+    params = ProposalFilterParams(
+        status=status,
+        salesperson_name=salesperson_name,
+        date_from=date_from,
+        date_to=date_to,
+        company_name=company_name,
+        client_name=client_name,
+        skip=skip,
+        limit=limit,
+    )
+    proposals, _total = await list_proposals_filtered(db, params)
+    return [ProposalSummaryResponse.model_validate(p) for p in proposals]
 
 
 @router.get(
