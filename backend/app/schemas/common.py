@@ -14,6 +14,7 @@ class SalespersonProfileResponse(BaseModel):
     user_id: str
     email: str
     role: str = "salesperson"
+    display_name: Optional[str] = None
 
 
 class ApiResponse(BaseModel, Generic[DataT]):
