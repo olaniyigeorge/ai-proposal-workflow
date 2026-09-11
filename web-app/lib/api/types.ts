@@ -59,7 +59,7 @@ export interface ProposalSummaryResponse {
   client_name: string;
   client_email: string;
   company_name: string;
-  salesperson_name: string;
+  salesperson_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,7 +70,7 @@ export interface ProposalDetailResponse {
   client_name: string;
   client_email: string;
   company_name: string;
-  salesperson_name: string;
+  salesperson_name: string | null;
   date_of_call: string;
   client_needs_summary: string;
   project_scope: string;
@@ -140,7 +140,8 @@ export type ActivityEventType =
   | 'document_generated'
   | 'document_generation_failed'
   | 'delivered'
-  | 'delivery_failed';
+  | 'delivery_failed'
+  | 'proposal_claimed';
 
 export interface ActivityLogEntryResponse {
   id: string;
@@ -150,6 +151,25 @@ export interface ActivityLogEntryResponse {
   actor?: string | null;
   event_metadata: Record<string, unknown>;
   created_at: string;
+}
+
+export type SalespersonAccountStatus = 'pending' | 'approved' | 'rejected';
+
+export interface SalespersonAccountResponse {
+  id: string;
+  email: string;
+  display_name: string | null;
+  status: SalespersonAccountStatus | string;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  created_at: string;
+}
+
+export interface SalespersonProfileResponse {
+  user_id: string;
+  email: string;
+  role: string;
+  display_name: string | null;
 }
 
 export interface ApiErrorDetail {
