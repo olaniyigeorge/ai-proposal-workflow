@@ -62,7 +62,7 @@ export function GenerateProposalButton({ proposalId, status }: GenerateProposalB
       <button
         onClick={start}
         disabled={isStarting || isGenerating}
-        className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/60 text-white font-medium text-xs flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+        className="w-full py-2.5 px-4 rounded-lg bg-[#1f2429] hover:bg-[#111417] border border-[#1f2429] text-white font-medium text-xs flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
       >
         {isGenerating || isStarting ? (
           <>
@@ -73,7 +73,7 @@ export function GenerateProposalButton({ proposalId, status }: GenerateProposalB
           label
         )}
       </button>
-      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>
   );
 }
