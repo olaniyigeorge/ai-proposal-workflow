@@ -4,6 +4,20 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-11 — Real logins started failing with "The specified alg value is not allowed"
+
+**Severity: High** (production-blocking for real login, not cosmetic — every real-account request failed with a 401 on whichever Supabase signing mode we didn't anticipate)
+
+**The gap (business view):** after real per-salesperson login shipped, sign-ins started intermittently throwing `Invalid or expired token: The specified alg value is not allowed`. This is a PyJWT error, not an expired-token message despite the wording — it means the token's own `alg` header wasn't in the list `jwt.decode(...)` was told to accept, i.e. a verification-method mismatch, not a bad secret or a stale session. Root cause: `verify_token` (`app/core/security.py`) hardcoded `algorithms=["HS256"]` and always verified against `SUPABASE_JWT_SECRET` — the *legacy* shared-secret Supabase signing mode. Supabase has since introduced **asymmetric JWT Signing Keys (ES256/RS256)**, verified via a published JWKS endpoint instead of a shared secret, and this project's Supabase instance is issuing tokens in that newer mode. Every real login was structurally broken the moment that was true — the shared secret doesn't even apply to ES256-signed tokens, so no amount of double-checking `SUPABASE_JWT_SECRET`'s value would have fixed it.
+
+**The fix (implemented 2026-09-11):** `verify_token` now reads the token's own (unverified) header to see its actual `alg` before deciding how to verify it: `HS*` algorithms still verify against `SUPABASE_JWT_SECRET` as before (unchanged path, zero risk to whichever mode was already working); anything else (`ES256`/`RS256`) verifies against Supabase's JWKS (`{SUPABASE_URL}/auth/v1/.well-known/jwks.json`) via `jwt.PyJWKClient`, which fetches and caches the actual public signing key by `kid` — never a shared secret for that mode, since asymmetric signing doesn't have one to share. This makes the backend correct regardless of which signing mode a given Supabase project is configured for, rather than needing to know it in advance.
+
+**Where it lives:** `backend/app/core/security.py::verify_token`, `_get_jwks_client`. Tests: `backend/tests/test_jwt_verification.py` (HS256 still works, ES256 now works via a fake JWKS client, and a regression test proving the old HS256-only call really does reproduce the exact reported error against a real ES256 token — not just asserting the new code path in isolation).
+
+**Open follow-up:** `PyJWKClient`'s default cache means a Supabase **key rotation** (if they ever rotate the signing key, e.g. for a security incident) could leave this backend verifying against a stale cached key for a window before the cache refreshes — not yet tuned or tested against an actual rotation event. Also worth confirming which signing mode is intended for this deployment long-term (Supabase's dashboard lets you choose) rather than silently supporting both indefinitely.
+
+---
+
 ## 2026-09-11 — A proposal can be fully generated from near-empty intake and read as confidently "finished"
 
 **The gap (business view):** nothing in the pipeline distinguishes a discovery call that actually happened from one where the notes never got filled in — a real example seen while testing had `client_needs_summary: "The client needs"`, `goals_and_objectives: "Goals"`, `project_scope: "deliverables"`, `recommended_services: "Services"`. Claude doesn't know that's placeholder-shaped input — it dutifully writes a grammatically clean, confident Introduction/Proposed Solution/Deliverables around it, and the result *looks* like a finished proposal at a glance (right template, right sections, right tone). The actual cost: a salesperson skims a generic-reading proposal, doesn't immediately recognize *why* it reads generic (the sections are well-formed, just empty of anything specific to this client), approves and sends it, and the client receives something that visibly wasn't tailored to them — the exact opposite of what a discovery-call-to-proposal pipeline is supposed to deliver, and a worse first impression than no automation at all.
