@@ -6,6 +6,8 @@ import {
   DeliveryDraftResponse,
   DeliveryRecordResponse,
   ActivityLogEntryResponse,
+  SalespersonAccountResponse,
+  SalespersonProfileResponse,
   ApiError,
 } from './types';
 import { getClientAuthToken } from '../auth/session';
@@ -296,6 +298,63 @@ export async function getActivityLog(
   });
 }
 
+export async function getMe(token?: string): Promise<SalespersonProfileResponse> {
+  return request<SalespersonProfileResponse>('/auth/me', {
+    method: 'GET',
+    token,
+    cache: 'no-store',
+  });
+}
+
+export async function updateMyDisplayName(
+  displayName: string,
+  token?: string
+): Promise<SalespersonProfileResponse> {
+  return request<SalespersonProfileResponse>('/auth/me', {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ display_name: displayName }),
+  });
+}
+
+export async function listAccounts(token?: string): Promise<SalespersonAccountResponse[]> {
+  return request<SalespersonAccountResponse[]>('/auth/accounts', {
+    method: 'GET',
+    token,
+    cache: 'no-store',
+  });
+}
+
+export async function approveAccount(
+  accountId: string,
+  token?: string
+): Promise<SalespersonAccountResponse> {
+  return request<SalespersonAccountResponse>(`/auth/pending/${accountId}/approve`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export async function rejectAccount(
+  accountId: string,
+  token?: string
+): Promise<SalespersonAccountResponse> {
+  return request<SalespersonAccountResponse>(`/auth/pending/${accountId}/reject`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export async function claimProposal(
+  proposalId: string,
+  token?: string
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(`/proposals/${proposalId}/claim`, {
+    method: 'POST',
+    token,
+  });
+}
+
 export const api = {
   listProposals,
   getProposal,
@@ -314,4 +373,10 @@ export const api = {
   deliverProposal,
   getDeliveryRecords,
   getActivityLog,
+  getMe,
+  updateMyDisplayName,
+  listAccounts,
+  approveAccount,
+  rejectAccount,
+  claimProposal,
 };
