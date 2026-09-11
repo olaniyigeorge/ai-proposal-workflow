@@ -33,7 +33,7 @@ export function ProposalStatusBadge({
         <span>{config.label}</span>
       </span>
       {showDescription && (
-        <span className="text-[11px] text-zinc-400 mt-1 pl-1 font-normal">
+        <span className="text-[11px] text-[#5c646c] mt-1 pl-1 font-normal">
           {config.description}
         </span>
       )}
