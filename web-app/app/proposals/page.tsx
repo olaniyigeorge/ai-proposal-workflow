@@ -1,5 +1,6 @@
 import React from 'react';
 import { listProposals } from '@/lib/api/client';
+import { ApiError } from '@/lib/api/types';
 import { ProposalSummaryResponse } from '@/lib/api/types';
 import { ProposalList } from '@/components/proposals/ProposalList';
 import { getServerAuthToken } from '@/lib/auth/serverSession';
@@ -9,12 +10,21 @@ export const dynamic = 'force-dynamic';
 export default async function ProposalsPage() {
   let proposals: ProposalSummaryResponse[] = [];
   let errorNotice: string | null = null;
+  // The "is the backend even running" hint only makes sense for a genuine
+  // connection failure (ApiError with status 0 — see client.ts's
+  // NETWORK_ERROR path). Showing it for a 401/403 (bad/pending token) was
+  // actively misleading: the backend was reachable and responded correctly,
+  // the request was just rejected, so telling someone to go start uvicorn
+  // solved nothing and confused the real "your account isn't approved yet"
+  // message sitting right above it.
+  let isConnectionFailure = false;
 
   try {
     const token = await getServerAuthToken();
     proposals = await listProposals(0, 50, token);
   } catch (err: any) {
     errorNotice = err?.message || 'Failed to load proposals from backend';
+    isConnectionFailure = err instanceof ApiError && err.status === 0;
   }
 
   return (
@@ -45,11 +55,15 @@ export default async function ProposalsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <div className="space-y-1">
-            <div className="font-semibold text-amber-900">Backend Connection Notice</div>
-            <div>{errorNotice}</div>
-            <div className="text-[11px] text-amber-700">
-              Ensure the FastAPI backend is running: <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono">cd backend && uvicorn main:app --reload</code>
+            <div className="font-semibold text-amber-900">
+              {isConnectionFailure ? 'Backend Connection Notice' : 'Couldn’t Load Proposals'}
             </div>
+            <div>{errorNotice}</div>
+            {isConnectionFailure && (
+              <div className="text-[11px] text-amber-700">
+                Ensure the FastAPI backend is running: <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono">cd backend && uvicorn main:app --reload</code>
+              </div>
+            )}
           </div>
         </div>
       )}
