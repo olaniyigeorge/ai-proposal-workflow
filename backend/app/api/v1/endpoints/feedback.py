@@ -16,15 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import CurrentSalesperson, get_current_salesperson
+from app.schemas.delivery import DeliveryDraftResponse
 from app.schemas.extended import (
-    ClientResponseRequest,
     FeedbackEntryRequest,
     FeedbackEntryResponse,
     KpiSummaryResponse,
-    ProposalFilterParams,
 )
 from app.services.feedback_service import list_feedback, submit_feedback
-from app.services.proposal_filter_service import compute_kpis, list_proposals_filtered
+from app.services.proposal_filter_service import compute_kpis
 from app.services.proposal_service import get_proposal_by_id
 
 router = APIRouter()
@@ -57,7 +56,7 @@ async def get_feedback(
     _: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> list[FeedbackEntryResponse]:
     cat: Optional[str] = category
-    entries = await list_feedback_entries(db, category=cat, limit=limit, offset=offset)
+    entries = await list_feedback(db, category=cat, limit=limit, offset=offset)
     return [FeedbackEntryResponse.model_validate(e) for e in entries]
 
 
@@ -92,14 +91,14 @@ async def get_kpis(
 
 @router.post(
     "/proposals/{proposal_id}/generate-email-draft",
-    response_model=app.schemas.delivery.DeliveryDraftResponse,
+    response_model=DeliveryDraftResponse,
     summary="Generate an AI-written delivery email draft for review (auth required, advisory only)",
 )
 async def generate_email_draft_endpoint(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current: CurrentSalesperson = Depends(get_current_salesperson),
-) -> app.schemas.delivery.DeliveryDraftResponse:
+) -> DeliveryDraftResponse:
     from app.domain.aidraft import generate_email_draft
     from app.services.delivery_service import build_document_link
 
@@ -118,7 +117,7 @@ async def generate_email_draft_endpoint(
     link = build_document_link(proposal.id)
     body_with_link = body.replace("[PROPOSAL_LINK]", link)
 
-    return app.schemas.delivery.DeliveryDraftResponse(
+    return DeliveryDraftResponse(
         subject=subject,
         body=body_with_link,
         recipient_email=proposal.client_email,

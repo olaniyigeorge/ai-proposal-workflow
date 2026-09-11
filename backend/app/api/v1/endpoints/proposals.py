@@ -1,5 +1,6 @@
 import uuid
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +28,7 @@ from app.schemas.activity import ActivityLogEntryResponse
 from app.schemas.claude_log import ClaudeCallLogResponse
 from app.schemas.delivery import DeliveryDraftResponse, DeliveryRecordResponse
 from app.schemas.document import DocumentArtifactResponse
+from app.schemas.extended import ProposalFilterParams
 from app.schemas.proposal import (
     ProposalDetailResponse,
     ProposalSummaryResponse,
@@ -57,10 +59,10 @@ from app.services.document_service import (
     start_document_generation,
 )
 from app.services.generation_service import run_generation_job, start_generation
+from app.services.proposal_filter_service import list_proposals_filtered
 from app.services.proposal_service import (
     claim_proposal,
     get_proposal_by_id,
-    list_proposals,
     transfer_proposal,
     unclaim_proposal,
     update_section_content,

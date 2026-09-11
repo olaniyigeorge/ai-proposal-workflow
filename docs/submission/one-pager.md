@@ -14,7 +14,7 @@ Live app: https://ai-proposal-workflow.vercel.app/ · API: https://ai-proposal-w
 
 ## How It Works
 
-1. **Intake** — a Google Form → Google Sheet → n8n automation normalizes the submission and posts it to the backend, which validates it, dedupes retries/resubmissions, and creates the proposal.
+1. **Intake** — a (Google Form)[https://docs.google.com/forms/d/e/1FAIpQLSfa8ndbPc9pNgyOpapTh8h4QnUWjTyx_CkCBS7iExXp97FaCQ/viewform] → (Google Sheet)[https://docs.google.com/spreadsheets/d/1H2k9i_Ybh1h5N4XLKnrv_1Ltb7q7qlr8KRn1MlFSiWc/edit?resourcekey=&gid=1756952078#gid=1756952078] → (n8n automation)[https://pod1.app.n8n.cloud/workflow/QTT7wulxGF34Tchb] normalizes the submission and posts it to the backend, which validates it, dedupes retries/resubmissions, and creates the proposal.
 2. **Generation** — the salesperson triggers AI generation. Claude drafts the narrative sections (Introduction, Proposed Solution, Deliverables); pricing, timeline, and client facts are always inserted verbatim, never left to the model to paraphrase.
 3. **Review** — the salesperson edits any section by hand, or asks Claude to regenerate one with a specific instruction ("make this more formal") — capped at 3 attempts per section so a stuck section doesn't become an unbounded cost.
 4. **Approval** — sections can be approved individually or all at once. The proposal only reaches "Approved" once every section is approved — this is enforced by the backend, not just hidden in the UI.
@@ -23,7 +23,7 @@ Live app: https://ai-proposal-workflow.vercel.app/ · API: https://ai-proposal-w
 
 ## How to Use It
 
-1. Go to the live app and sign in (a real Supabase account, or the "Dev Salesperson" option for a quick look without creating one).
+1. Go to the live app and sign up (a real Supabase account) with email and password. You will get an email. To sign in with, ateempt signing in an wait for another salesperson to approve you.
 2. Open a proposal from the list — a fresh one starts in **Draft** with template-only sections.
 3. Click **Generate Proposal** to have Claude draft the two AI-written sections.
 4. Edit any section directly, or click **Regenerate** and give it an instruction if you want the AI to try again.

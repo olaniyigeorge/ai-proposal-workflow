@@ -14,14 +14,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.domain.aidraft import build_email_subject_fallback, build_email_body_fallback
-from app.models.client_feedback import ClientResponseRequest, ClientResponseRecordResponse, ClientResponseType
-from app.models.delivery import DeliveryRecord, DeliveryStatus
-from app.models.proposal import Proposal
-from app.schemas.extended import ClientPageMetaResponse
+from app.models.proposal import Proposal, ProposalStatus
+from app.schemas.extended import (
+    ClientPageMetaResponse,
+    ClientResponseRecordResponse,
+    ClientResponseRequest,
+)
 from app.services.client_response_service import record_client_response
 from app.services.document_service import get_document_artifact
 from app.services.proposal_service import get_proposal_by_id
+
+# A response is only meaningful once the client has actually been sent
+# something — recording ACCEPTED/DECLINED before DELIVERED would let anyone
+# guessing/holding a proposal UUID register a response to a proposal that was
+# never sent to them.
+_RESPONDABLE_STATUSES = {ProposalStatus.DELIVERED, ProposalStatus.CLOSED}
 
 router = APIRouter()
 
@@ -84,6 +91,12 @@ async def record_public_response(
     proposal = await get_proposal_by_id(db, proposal_id)
     if not proposal:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+
+    if proposal.status not in _RESPONDABLE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This proposal has not been delivered yet, so it cannot be responded to.",
+        )
 
     record = await record_client_response(
         db,

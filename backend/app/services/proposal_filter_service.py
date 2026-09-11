@@ -95,17 +95,14 @@ async def compute_kpis(
     # delivered = proposals with a SENT delivery record (counted at delivery-record level,
     # one row per delivery; if a proposal was delivered multiple times we still count it once
     # for KPI purposes — count distinct proposal_ids)
-    delivered_stmt = (
-        select(func.count())
-        .select_from(
-            select(DeliveryRecord.proposal_id)
-            .where(DeliveryRecord.status == DeliveryStatus.SENT)
-            .where(Proposal.id == DeliveryRecord.proposal_id)
-            .where(window_clause) if window_clause else select(DeliveryRecord.proposal_id).where(DeliveryRecord.status == DeliveryStatus.SENT).where(Proposal.id == DeliveryRecord.proposal_id)
-            .distinct()
-            .subquery()
-        )
+    delivered_subq = (
+        select(DeliveryRecord.proposal_id)
+        .where(DeliveryRecord.status == DeliveryStatus.SENT)
+        .where(Proposal.id == DeliveryRecord.proposal_id)
     )
+    if window_clause is not None:
+        delivered_subq = delivered_subq.where(window_clause)
+    delivered_stmt = select(func.count()).select_from(delivered_subq.distinct().subquery())
     total_delivered = int((await db.execute(delivered_stmt)).scalar_one())
 
     # accepted / declined / no_response — count client_response_records whose proposal is in window
