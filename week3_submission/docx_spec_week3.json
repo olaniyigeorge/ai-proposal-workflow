@@ -1,0 +1,58 @@
+{
+  "page": {
+    "width_mm": 210,
+    "height_mm": 297,
+    "margins_mm": {"top": 25, "bottom": 25, "left": 30, "right": 30}
+  },
+  "styles": [
+    {"name": "SectionHeading", "base": "Heading 1", "font": "Calibri", "size_pt": 14, "bold": true, "color": "003366"},
+    {"name": "SubHeading", "base": "Heading 2", "font": "Calibri", "size_pt": 12, "bold": true, "color": "2E74B5"},
+    {"name": "QuestionHeading", "base": "Heading 3", "font": "Calibri", "size_pt": 11, "bold": true, "color": "404040"}
+  ],
+  "blocks": [
+    {"type": "heading", "text": "Week 3: AI Proposal / Document Application", "level": 1},
+
+    {"type": "heading", "text": "1. Application Link", "level": 2, "style": "SectionHeading"},
+    {"type": "paragraph", "text": "[Paste the application link here]"},
+
+    {"type": "heading", "text": "2. Generated Proposal Sample", "level": 2, "style": "SectionHeading"},
+    {"type": "paragraph", "text": "[Paste the generated proposal sample or a link to it here]"},
+
+    {"type": "heading", "text": "3. Testing Evidence", "level": 2, "style": "SectionHeading"},
+    {"type": "paragraph", "text": "Fill in the table below. If a test failed at first, say what you changed — that's the part we're most interested in."},
+
+    {"type": "table", "header": ["Test Case", "Expected Result", "Actual Result", "Passed?", "Notes or Fix Made"], "style": "Table Grid",
+     "rows": [
+       ["Normal proposal generation", "[Expected]", "[Actual]", "[Yes/No]", "[Notes/fix]"],
+       ["Missing information", "[Expected]", "[Actual]", "[Yes/No]", "[Notes/fix]"],
+       ["Supporting material used", "[Expected]", "[Actual]", "[Yes/No]", "[Notes/fix]"],
+       ["Section regeneration", "[Expected]", "[Actual]", "[Yes/No]", "[Notes/fix]"],
+       ["Human approval before sending", "[Expected]", "[Actual]", "[Yes/No]", "[Notes/fix]"],
+       ["Final delivery and logging", "[Expected]", "[Actual]", "[Yes/No]", "[Notes/fix]"],
+       ["Failure handling", "[Expected]", "[Actual]", "[Yes/No]", "[Notes/fix]"]
+     ]},
+
+    {"type": "heading", "text": "4. Video Walkthrough", "level": 2, "style": "SectionHeading"},
+    {"type": "paragraph", "text": "[Paste the video walkthrough link here]"},
+
+    {"type": "heading", "text": "5. Reflection Sheet", "level": 2, "style": "SectionHeading"},
+
+    {"type": "heading", "text": "Q1: In a business setting, what clarifying questions would you ask when assigned this project?", "level": 3, "style": "QuestionHeading"},
+    {"type": "paragraph", "text": "[YOUR ANSWER HERE — Mind dump pending]"},
+
+    {"type": "heading", "text": "Q2: What was the most significant challenge you faced while building this, and what was its root cause?", "level": 3, "style": "QuestionHeading"},
+    {"type": "paragraph", "text": "[YOUR ANSWER HERE — Mind dump pending]"},
+
+    {"type": "heading", "text": "Q3: If you were to start this project again with your current knowledge, what is the one thing you would do differently to make the solution more robust or efficient?", "level": 3, "style": "QuestionHeading"},
+    {"type": "paragraph", "text": "[YOUR ANSWER HERE — Mind dump pending]"},
+
+    {"type": "heading", "text": "Q4: What edge cases did you account for, and how did you account for them?", "level": 3, "style": "QuestionHeading"},
+    {"type": "paragraph", "text": "[YOUR ANSWER HERE — Mind dump pending]"},
+
+    {"type": "heading", "text": "Q5: Which Claude model did you use and why? Name the alternative you considered, and explain how you weighed quality, cost, latency and task complexity.", "level": 3, "style": "QuestionHeading"},
+    {"type": "paragraph", "text": "[YOUR ANSWER HERE — Mind dump pending]"},
+
+    {"type": "heading", "text": "6. One-Page Documentation", "level": 2, "style": "SectionHeading"},
+    {"type": "paragraph", "text": "[Paste the one-page documentation link here]"}
+  ]
+}
