@@ -4,6 +4,22 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-11 — Pinned sections read as pasted-in fragments, not part of one document
+
+**The gap (business view):** the rendered PDF looked like six sections joined together rather than one professionally written proposal — a client reading it can tell it's AI-assisted, which undercuts the document's job of looking like a considered, human-prepared offer. Two compounding causes: (1) the PDF rendered each section as a bordered, shadowed card with a `white-space: pre-wrap` blob inside — a UI-component look, not print typography — and (2) Timeline and Pricing were pure pinned facts with zero framing prose (the raw `proposed_timeline`/`estimated_pricing` form answers dropped straight onto the page with nothing introducing them), and Next Steps was static boilerplate that couldn't be regenerated to match the rest of the document's tone. Since only 3 of 6 sections went through Claude at all, a salesperson using a regeneration instruction like "make this more formal" to fix the tone across a proposal had no way to touch half the document.
+
+**The fix (implemented 2026-09-11):**
+- **Rendering** (`backend/app/domain/document.py`): dropped the bordered-card-per-section layout in favor of continuous typeset prose — a numbered running heading (accent-colored index + title under a thin rule) followed by real `<p>`/`<ul>`/`<ol>` markup instead of one pre-wrapped blob. Brand tokens (color/font from `design_tokens.py`) are unchanged — this superseded the card decision from earlier the same day (§6-§8 of `docs/design-system-redesign-and-ownership-concerns.md`) on layout only, not brand.
+- **Generation scope** (`backend/app/domain/generation.py`): every `SectionKey` now has a Claude call in it. Timeline and Pricing follow the same "pin the fact, generate the frame" shape Proposed Solution already used for `project_scope` — a short generated lead-in is prepended to the exact, verbatim date/price (`assemble_section_content`), and the system/task prompts explicitly forbid the model from stating or paraphrasing the actual number/date itself, so a regeneration can change the wording around a price without any path to drifting the price a client would actually be quoted. Next Steps became a fully generated closing paragraph (canonical facts only — no invented commitments). All three are now in `GENERATED_SECTION_KEYS` and therefore regenerable (3-attempt cap, mandatory instruction) like the rest — the frontend gate in `web-app/lib/proposal-status.ts` was updated to match, since CLAUDE.md is explicit that hiding a regenerate button was never the actual guard (the backend guard was already generic; only the section-key allowlist was stale).
+- **Prompt consistency**: added an explicit rule to `build_system_prompt()` — every section is one part of a single document the client reads start to finish, so a section must not repeat its own title, use meta phrases like "in this section"/"this document", or re-greet the client outside the Introduction. This targets the "forced together" feel directly, independent of the pin/generate split above.
+- **Pricing currency formatting**: `normalize_pricing_display()` prefixes a bare numeric pricing answer with `$` (e.g. intake answer `"16000"` → `"$16000"`) without double-prefixing a value that already carries a symbol (`$`, `€`, `£`, `¥`). Deliberately conservative: it only prefixes the *whole field once*, only when the field starts with a digit — it does not hunt for and prefix a second embedded number in free text (e.g. `"16000 upfront, 5000 on completion"` only gets the first number prefixed), since `estimated_pricing` is unstructured free text, not itemized line items, and guessing which embedded numbers are prices risks corrupting ones that aren't (a day count, a percentage).
+
+**Where it lives:** `backend/app/domain/document.py`, `backend/app/domain/generation.py`, `backend/app/services/intake_service.py` (pre-generation placeholders for Timeline/Pricing/Next Steps now come from the same `pinned_prefix_for_section` source of truth), `web-app/lib/proposal-status.ts`. Tests: `backend/tests/test_document.py`, `backend/tests/test_generation.py`, `backend/tests/test_regeneration.py`, `backend/tests/test_claude_log.py`.
+
+**Open follow-up:** the short-lines-become-a-`<ul>` heuristic in `_render_paragraphs` (all lines ≤12 words → bullet list) is a formatting guess, not a structural signal from the model — a generated paragraph that happens to wrap into several short lines could render as a bulleted list when it was meant to be prose. Low risk given the word-count targets are already short and deliberate, but worth revisiting if a generated section ever reads oddly listified.
+
+---
+
 ## 2026-09-11 — "Closest match" assignment: scoped to manual self-claim, not fuzzy auto-matching
 
 **The gap (business view):** the feature request for self-service Team management asked for a salesperson's display name to be "used for assigning proposals to them (closest match)." Read literally, that could mean fuzzy-matching a proposal's free-text `salesperson_name` (whatever a client or admin typed at intake) against registered display names and auto-suggesting or auto-assigning the best match. CLAUDE.md and decisions #20 explicitly forbid exactly that: "never auto-assign proposal ownership by string-matching this field" — a client typing "Bob" shouldn't silently bind a proposal to whichever salesperson named "Bob S." happens to exist, since a near-miss match assigning the wrong person's name to real client PII is a worse failure than leaving it unassigned for a human to sort out.
@@ -393,6 +409,30 @@ Working log of edge cases discovered while building this project — the "gotcha
 **Where it lives:** `backend/app/models/proposal.py` (`regeneration_log` column), `backend/app/services/regeneration_service.py` (appends an entry on both success and failure), `backend/app/schemas/proposal.py` (`RegenerationLogEntry`), `web-app/components/proposals/RegenerateSectionButton.tsx` (renders it). Tests: `test_regeneration_job_success_updates_only_targeted_section`, `test_regeneration_job_failure_does_not_burn_cap_attempt`.
 
 **Resolved follow-up (decisions #13b):** append-only, no edit/delete — matches "cleaner audit" over "salesperson's editable notes," since the log records what was actually *sent* to Claude, not a scratchpad. If a salesperson wants to revise their intent, that's simply their next attempt's instruction.
+
+---
+
+## 2026-09-11 — Ownership enforcement can lock out the dev token and stale grants
+
+**The gap (business view):** Once claiming became enforced ownership (decisions #23), two things could quietly go wrong if not handled: (1) the dev token used for local testing has no backing `salesperson_accounts` row, so it could never satisfy ownership of anything it claims — a naive implementation would let the dev token "claim" a proposal and then lock everyone (including itself) out of it; (2) a transfer could hand a proposal to a colleague who can't actually act on it — not yet approved, or approved but never set a `display_name` — silently recreating the "labeled but not really owned" problem ownership enforcement exists to fix.
+
+**The fix (implemented 2026-09-11):** the dev token was already blocked from claiming at all (`current.display_name` is unset for it, so `POST /claim` 400s before `salesperson_account_id` is ever touched) — ownership enforcement reuses that same precondition rather than introducing a new one. Separately, `transfer_proposal` (`backend/app/services/proposal_service.py`) validates the target account is `APPROVED` and has a non-blank `display_name` before moving ownership, rejecting with 422 (`TransferTargetInvalidError`) otherwise — the same precondition self-claim already enforced on the claimer, now enforced symmetrically on a transfer's target.
+
+**Where it lives:** `backend/app/domain/ownership.py` (`assert_owns_proposal`), `backend/app/services/proposal_service.py` (`claim_proposal`/`unclaim_proposal`/`transfer_proposal`), `backend/app/core/security.py` (`CurrentSalesperson.account_id`, `None` for the dev token). Tests: `backend/tests/test_ownership.py::test_dev_token_cannot_act_on_claimed_proposal`, `::test_transfer_rejected_when_target_has_no_display_name`.
+
+**Open follow-up:** bulk reassignment (e.g. moving everything a departed salesperson owned) still has no dedicated endpoint — see `docs/design-system-redesign-and-ownership-concerns.md` §3. The proposals list also still shows every proposal to every salesperson regardless of ownership (§1) — this pass only gated the write actions, not visibility.
+
+---
+
+## 2026-09-11 — PDF card redesign silently pushed a short proposal onto a second page
+
+**The gap (business view):** Redesigning the proposal PDF's sections into bordered, rounded cards (to match the dashboard's visual language — decisions #23) added padding and margin around every section. A "short proposal" that used to fit on one page started overflowing onto a mostly-blank second page — a real regression a client would notice (a proposal that looks unfinished or padded out), and exactly the kind of rendering fidelity issue CLAUDE.md flags as having no earlier point in the flow to catch, since the PDF is generated exactly once.
+
+**The fix (implemented 2026-09-11):** the existing test `test_pdf_short_proposal_is_a_single_page` caught this immediately — card padding/margins in `backend/app/domain/document.py`'s `_CSS` were trimmed (section margin 18px→12px, padding 16/18px→12/14px, header spacing reduced) until a short proposal fit on one page again, verified by re-running the fidelity test suite, not just eyeballing the CSS.
+
+**Where it lives:** `backend/app/domain/document.py` (`_CSS`). Test: `backend/tests/test_document.py::test_pdf_short_proposal_is_a_single_page`.
+
+**Open follow-up:** none — but any future visual tweak to `.section`/`.doc-header` spacing should re-run `test_document.py` before merging, not just visually inspect a rendered sample.
 
 ---
 
