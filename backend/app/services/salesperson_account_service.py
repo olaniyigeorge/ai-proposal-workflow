@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.exceptions import DisplayNameTakenError
 from app.models.salesperson_account import SalespersonAccount, SalespersonAccountStatus
 
 
@@ -44,6 +46,38 @@ async def list_pending(db: AsyncSession) -> List[SalespersonAccount]:
         .order_by(SalespersonAccount.created_at.asc())
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def list_all(db: AsyncSession) -> List[SalespersonAccount]:
+    """Every account regardless of status — the "Team" tab's data source.
+    Pending accounts get an inline approve/reject action in that same view;
+    this is deliberately not restricted to "public info only" the way a
+    multi-tenant app might, since every field here (email, display_name,
+    status) is exactly what CLAUDE.md's single-role model already treats as
+    visible to any authenticated salesperson (decisions #21) — there's no
+    narrower audience to protect it from within this app.
+    """
+    stmt = select(SalespersonAccount).order_by(SalespersonAccount.created_at.asc())
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def update_display_name(
+    db: AsyncSession, account: SalespersonAccount, display_name: str
+) -> SalespersonAccount:
+    """Self-service rename (PATCH /auth/me). Enforced unique at the DB level
+    (migration e4f5a6b7c8d9) — this catches that constraint and raises a
+    clear domain error instead of letting an IntegrityError surface as a
+    500, since "someone else already has this name" is an expected, not
+    exceptional, outcome here.
+    """
+    account.display_name = display_name
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise DisplayNameTakenError(display_name) from exc
+    await db.refresh(account)
+    return account
 
 
 async def get_account(db: AsyncSession, account_id) -> Optional[SalespersonAccount]:
