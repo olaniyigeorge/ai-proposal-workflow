@@ -152,7 +152,7 @@ export function ApprovalPanel({ proposal }: ApprovalPanelProps) {
   if (status === 'APPROVED') {
     return (
       <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
-        Approved — all {totalSections} sections signed off. Document generation (Phase 6) is next.
+        Approved — all {totalSections} sections signed off. Document generation is next.
       </div>
     );
   }
