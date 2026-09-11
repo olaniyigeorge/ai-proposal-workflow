@@ -19,92 +19,92 @@ export interface StatusConfig {
 export const PROPOSAL_STATUS_CONFIG: Record<ProposalStatus, StatusConfig> = {
   DRAFT: {
     label: 'Draft',
-    badgeClass: 'bg-zinc-800/80 text-zinc-300 border-zinc-700/60',
-    dotClass: 'bg-zinc-400',
+    badgeClass: 'bg-[#f5f6f5] text-[#5c646c] border-[#d8dbd9]',
+    dotClass: 'bg-[#8a8f8c]',
     description: 'Intake received. Sections not yet generated.',
   },
   GENERATING: {
     label: 'Generating AI Content',
-    badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-700/60',
-    dotClass: 'bg-indigo-400 animate-pulse',
+    badgeClass: 'bg-[#2563eb]/10 text-[#2563eb] border-[#2563eb]/20',
+    dotClass: 'bg-[#2563eb] animate-pulse',
     description: 'Claude is generating proposal sections in the background.',
     isTransient: true,
   },
   GENERATION_FAILED: {
     label: 'Generation Failed',
-    badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
-    dotClass: 'bg-rose-400',
+    badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+    dotClass: 'bg-rose-500',
     description: 'Section generation encountered an error. Retry available.',
     isFailed: true,
   },
   IN_REVIEW: {
     label: 'In Review',
-    badgeClass: 'bg-amber-950/80 text-amber-300 border-amber-700/60',
-    dotClass: 'bg-amber-400',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+    dotClass: 'bg-amber-500',
     description: 'Proposal is under salesperson review and editing.',
   },
   PENDING_APPROVAL: {
     label: 'Pending Approval',
-    badgeClass: 'bg-sky-950/80 text-sky-300 border-sky-700/60',
-    dotClass: 'bg-sky-400',
+    badgeClass: 'bg-sky-50 text-sky-700 border-sky-200',
+    dotClass: 'bg-sky-500',
     description: 'Ready for final review and approval.',
   },
   APPROVED: {
     label: 'Approved',
-    badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60',
-    dotClass: 'bg-emerald-400',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    dotClass: 'bg-emerald-500',
     description: 'All sections approved. Ready for document rendering.',
   },
   DOCUMENT_GENERATING: {
     label: 'Rendering Document',
-    badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-700/60',
-    dotClass: 'bg-indigo-400 animate-pulse',
+    badgeClass: 'bg-[#2563eb]/10 text-[#2563eb] border-[#2563eb]/20',
+    dotClass: 'bg-[#2563eb] animate-pulse',
     description: 'Generating high-fidelity branded PDF.',
     isTransient: true,
   },
   DOCUMENT_GENERATION_FAILED: {
     label: 'PDF Render Failed',
-    badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
-    dotClass: 'bg-rose-400',
+    badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+    dotClass: 'bg-rose-500',
     description: 'Document rendering failed. Retry available.',
     isFailed: true,
   },
   DOCUMENT_READY: {
     label: 'Document Ready',
-    badgeClass: 'bg-teal-950/80 text-teal-300 border-teal-700/60',
-    dotClass: 'bg-teal-400',
+    badgeClass: 'bg-teal-50 text-teal-700 border-teal-200',
+    dotClass: 'bg-teal-500',
     description: 'Final PDF generated and stored. Ready for client delivery.',
   },
   DELIVERING: {
     label: 'Sending to Client',
-    badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-700/60',
-    dotClass: 'bg-indigo-400 animate-pulse',
+    badgeClass: 'bg-[#2563eb]/10 text-[#2563eb] border-[#2563eb]/20',
+    dotClass: 'bg-[#2563eb] animate-pulse',
     description: 'Sending proposal email with PDF attachment.',
     isTransient: true,
   },
   DELIVERY_FAILED: {
     label: 'Delivery Failed',
-    badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
-    dotClass: 'bg-rose-400',
+    badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+    dotClass: 'bg-rose-500',
     description: 'Email delivery failed or bounced. Retry available.',
     isFailed: true,
   },
   DELIVERED: {
     label: 'Delivered',
-    badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60',
-    dotClass: 'bg-emerald-400',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    dotClass: 'bg-emerald-500',
     description: 'Delivered to client via email.',
   },
   REJECTED: {
     label: 'Changes Requested',
-    badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
-    dotClass: 'bg-rose-400',
+    badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+    dotClass: 'bg-rose-500',
     description: 'Approval rejected with feedback. Returned to In Review.',
   },
   CLOSED: {
     label: 'Closed',
-    badgeClass: 'bg-slate-900 text-slate-400 border-slate-700/50',
-    dotClass: 'bg-slate-500',
+    badgeClass: 'bg-[#f5f6f5] text-[#8a8f8c] border-[#d8dbd9]',
+    dotClass: 'bg-[#8a8f8c]',
     description: 'Workflow concluded.',
   },
 };
@@ -114,8 +114,8 @@ export function getStatusConfig(status: ProposalStatus | string): StatusConfig {
   return (
     PROPOSAL_STATUS_CONFIG[normalized] || {
       label: status,
-      badgeClass: 'bg-zinc-800 text-zinc-300 border-zinc-700',
-      dotClass: 'bg-zinc-400',
+      badgeClass: 'bg-[#f5f6f5] text-[#5c646c] border-[#d8dbd9]',
+      dotClass: 'bg-[#8a8f8c]',
       description: status,
     }
   );
@@ -142,13 +142,13 @@ export interface SectionStatusConfig {
 export const SECTION_STATUS_CONFIG: Record<SectionApprovalStatus, SectionStatusConfig> = {
   pending: {
     label: 'Pending Review',
-    badgeClass: 'bg-amber-950/60 text-amber-300 border-amber-800/40',
-    dotClass: 'bg-amber-400',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+    dotClass: 'bg-amber-500',
   },
   approved: {
     label: 'Section Approved',
-    badgeClass: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40',
-    dotClass: 'bg-emerald-400',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    dotClass: 'bg-emerald-500',
   },
 };
 
@@ -157,8 +157,8 @@ export function getSectionStatusConfig(status: SectionApprovalStatus | string): 
   return (
     SECTION_STATUS_CONFIG[normalized] || {
       label: status,
-      badgeClass: 'bg-zinc-800 text-zinc-300 border-zinc-700',
-      dotClass: 'bg-zinc-400',
+      badgeClass: 'bg-[#f5f6f5] text-[#5c646c] border-[#d8dbd9]',
+      dotClass: 'bg-[#8a8f8c]',
     }
   );
 }
@@ -172,22 +172,22 @@ export interface ContentOriginConfig {
 export const CONTENT_ORIGIN_CONFIG: Record<ContentOrigin, ContentOriginConfig> = {
   template_default: {
     label: 'Template Boilerplate',
-    badgeClass: 'bg-zinc-800/80 text-zinc-400 border-zinc-700/50',
+    badgeClass: 'bg-[#f5f6f5] text-[#5c646c] border-[#d8dbd9]',
     description: 'Default template structure',
   },
   ai_generated: {
     label: 'AI Generated',
-    badgeClass: 'bg-violet-950/70 text-violet-300 border-violet-800/40',
+    badgeClass: 'bg-violet-50 text-violet-700 border-violet-200',
     description: 'Generated by Claude from intake submission',
   },
   human_edited: {
     label: 'Human Edited',
-    badgeClass: 'bg-blue-950/70 text-blue-300 border-blue-800/40',
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
     description: 'Manually edited by salesperson',
   },
   human_edited_after_generation: {
     label: 'Edited After AI',
-    badgeClass: 'bg-cyan-950/70 text-cyan-300 border-cyan-800/40',
+    badgeClass: 'bg-cyan-50 text-cyan-700 border-cyan-200',
     description: 'AI-generated then customized by salesperson',
   },
 };
@@ -197,7 +197,7 @@ export function getContentOriginConfig(origin: ContentOrigin | string): ContentO
   return (
     CONTENT_ORIGIN_CONFIG[normalized] || {
       label: origin.replace(/_/g, ' '),
-      badgeClass: 'bg-zinc-800 text-zinc-400 border-zinc-700',
+      badgeClass: 'bg-[#f5f6f5] text-[#5c646c] border-[#d8dbd9]',
       description: origin,
     }
   );
@@ -305,4 +305,68 @@ export function deliveryInProgress(proposal: ProposalDetailResponse): boolean {
 
 export function isDelivered(proposal: ProposalDetailResponse): boolean {
   return proposal.status === 'DELIVERED' || proposal.status === 'CLOSED';
+}
+
+// Fields that free-text answers, tested for "thin" content below. Pricing/
+// timeline/date are naturally short ("$5,000", "6 weeks") and aren't useful
+// thinness signals, so they're deliberately excluded.
+const NARRATIVE_FIELDS: (keyof ProposalDetailResponse)[] = [
+  'client_needs_summary',
+  'project_scope',
+  'goals_and_objectives',
+  'recommended_services',
+];
+
+const THIN_WORD_THRESHOLD = 4;
+
+/**
+ * Flags an intake that's too sparse to write a real proposal from — e.g. a
+ * test/demo submission, or a discovery call where the notes never actually
+ * got filled in. Claude will still dutifully generate grammatically fine
+ * sections from "Goals: Goals" / "Scope: deliverables", but the result reads
+ * as content-free to the client — this is a business-quality problem the
+ * pipeline can't catch on its own, so the salesperson needs to be told to go
+ * back to the client for more detail before this ships. Threshold: 2+
+ * narrative fields under 4 words, which a genuine discovery-call answer
+ * essentially never is (see docs/edge-cases.md, 2026-09-11).
+ */
+export function thinIntakeFields(proposal: ProposalDetailResponse): string[] {
+  return NARRATIVE_FIELDS.filter((field) => {
+    const value = proposal[field];
+    if (typeof value !== 'string') return false;
+    const wordCount = value.trim().split(/\s+/).filter(Boolean).length;
+    return wordCount > 0 && wordCount < THIN_WORD_THRESHOLD;
+  });
+}
+
+export function hasThinIntake(proposal: ProposalDetailResponse): boolean {
+  return thinIntakeFields(proposal).length >= 2;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  client_needs_summary: "the client's needs",
+  project_scope: 'the project scope',
+  goals_and_objectives: 'their goals and objectives',
+  recommended_services: 'recommended services/deliverables',
+};
+
+/** A pre-filled mailto: link so the salesperson can ask the client for more
+ * detail in one click rather than writing the request from scratch. */
+export function buildRequestMoreInfoMailto(proposal: ProposalDetailResponse): string {
+  const thin = thinIntakeFields(proposal);
+  const topics = thin.map((f) => FIELD_LABELS[f] || f).join(', ');
+  const subject = `Quick follow-up on your ${proposal.company_name} proposal`;
+  const body = [
+    `Hi ${proposal.client_name},`,
+    '',
+    "Before we finalize your proposal, we'd like a bit more detail so we can " +
+      `tailor it properly — specifically around ${topics}.`,
+    '',
+    'Could you share a few more sentences on this when you get a chance?',
+    '',
+    'Thanks,',
+  ].join('\n');
+  return `mailto:${encodeURIComponent(proposal.client_email)}?subject=${encodeURIComponent(
+    subject
+  )}&body=${encodeURIComponent(body)}`;
 }
