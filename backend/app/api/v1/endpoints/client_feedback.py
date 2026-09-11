@@ -1,96 +1,77 @@
-"""
-Public (unauthenticated) client-facing endpoints for the delivered-proposal
-response flow (week-3 feature).
+from typing import Annotated, Optional
+from uuid import UUID
 
-GET  /public/proposals/{proposal_id}        -> meta the client page needs to render (no PII beyond client_name/company)
-POST /public/proposals/{proposal_id}/response -> record accept/decline/feedback (no auth; idempotency on response type)
-
-These intentionally carry no JWT requirement — clients never authenticate into
-this system (CLAUDE.md). The link embedded in the delivery email points here.
-"""
-
-import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.extended import (
+    ClientPageMetaResponse,
+    ClientResponseRequest,
+    ClientResponseRecordResponse,
+)
 from app.core.database import get_db
-from app.domain.aidraft import build_email_subject_fallback, build_email_body_fallback
-from app.models.client_feedback import ClientResponseRequest, ClientResponseRecordResponse, ClientResponseType
-from app.models.delivery import DeliveryRecord, DeliveryStatus
-from app.models.proposal import Proposal
-from app.schemas.extended import ClientPageMetaResponse
 from app.services.client_response_service import record_client_response
-from app.services.document_service import get_document_artifact
-from app.services.proposal_service import get_proposal_by_id
+from app.models.proposal import ProposalStatus
 
 router = APIRouter()
 
+# Public (unauthenticated) client response page endpoints
+
 
 @router.get(
-    "/proposals/{proposal_id}",
+    "/public/proposals/{proposal_id}",
     response_model=ClientPageMetaResponse,
-    summary="Public client page meta — renders the 'view your proposal' page (no auth)",
+    summary="Public client page — metadata needed to render the Accept/Decline/Feedback page",
 )
-async def public_proposal_meta(
-    proposal_id: uuid.UUID,
+async def get_client_page_meta(
+    proposal_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> ClientPageMetaResponse:
-    """Return the minimal public-facing info a recipient needs: who the proposal
-    is for, the company, and whether the PDF is ready (with a signed link if so).
-    No salesperson identity, no internal status enum, no activity log.
-    """
-    proposal = await get_proposal_by_id(db, proposal_id)
-    if not proposal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
-
-    artifact = await get_document_artifact(db, proposal_id)
-    if artifact is not None:
-        from app.adapters.storage_client import get_signed_url
-        try:
-            download_url = await get_signed_url(artifact.storage_path)
-        except Exception:
-            download_url = None
-    else:
-        download_url = None
-
+    """No auth. A client clicks the link in the delivery email and lands here;
+    the page uses this response to render the company name, salesperson name,
+    and the three response buttons."""
+    proposal = await db.get(Proposal, proposal_id)
+    if proposal is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found"
+        )
     return ClientPageMetaResponse(
-        proposal_id=proposal.id,
-        client_name=proposal.client_name,
+        id=proposal.id,
         company_name=proposal.company_name,
-        document_ready=artifact is not None,
-        document_download_url=download_url,
+        client_name=proposal.client_name,
+        salesperson_name=(proposal.salesperson_name or "Your sales team"),
+        status=proposal.status,
     )
 
 
 @router.post(
-    "/proposals/{proposal_id}/response",
+    "/public/proposals/{proposal_id}/respond",
     response_model=ClientResponseRecordResponse,
-    summary="Record the recipient's response to a delivered proposal (no auth)",
+    summary="Record the client's Accept / Decline / Feedback decision",
 )
-async def record_public_response(
-    proposal_id: uuid.UUID,
+async def submit_client_response(
+    proposal_id: UUID,
     body: ClientResponseRequest,
     db: AsyncSession = Depends(get_db),
-    client_ip: str | None = Query(default=None, include_in_schema=False),
 ) -> ClientResponseRecordResponse:
-    """Record the client's accept/decline/feedback. Idempotent per response type
-    per proposal: a second ACCEPTED on the same proposal returns the existing row
-    rather than creating a duplicate.
+    """No auth. The client page POSTs this when the recipient clicks Accept or
+    Decline (with optional feedback text). Both the proposal status is updated
+    AND a ClientResponseRecord is persisted (per the chosen default), so the
+    won-lead pipeline and the activity trail both see the decision.
 
-    The client_ip is best-effort from the requesting layer (FastAPI
-    ``request.client.host`` when available) and is passed through as a query
-    parameter here so this endpoint stays simple and testable.
-    """
-    proposal = await get_proposal_by_id(db, proposal_id)
-    if not proposal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
-
-    record = await record_client_response(
-        db,
-        proposal,
-        response_type=body.response_type,
-        feedback_text=body.feedback_text,
-        client_ip=client_ip,
-        actor=None,
+    400 is raised (by domain/client_response.py) if the proposal hasn't reached
+    a deliverable status (DOCUMENT_READY / DELIVERED), or if the response was
+    already recorded for this proposal — clients are told to click only once,
+    but the guard still exists."""
+    try:
+        record = await record_client_response(db, proposal_id, body)
+    except ClientResponseError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return ClientResponseRecordResponse(
+        id=record.id,
+        proposal_id=record.proposal_id,
+        response_type=record.response_type,
+        feedback_text=record.feedback_text,
+        recorded_at=record.recorded_at,
     )
-    return ClientResponseRecordResponse.model_validate(record)

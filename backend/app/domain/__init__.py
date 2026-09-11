@@ -1,6 +1,8 @@
 from app.domain.exceptions import (
     ApprovalGuardError,
+    ClientResponseError,
     DomainError,
+    FeedbackError,
     InvalidTransitionError,
     RegenerationCapExceededError,
     RegenerationInstructionRequiredError,

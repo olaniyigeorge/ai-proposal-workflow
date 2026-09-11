@@ -57,7 +57,7 @@ async def get_feedback(
     _: CurrentSalesperson = Depends(get_current_salesperson),
 ) -> list[FeedbackEntryResponse]:
     cat: Optional[str] = category
-    entries = await list_feedback_entries(db, category=cat, limit=limit, offset=offset)
+    entries = await list_feedback(db, category=cat, limit=limit, offset=offset)
     return [FeedbackEntryResponse.model_validate(e) for e in entries]
 
 

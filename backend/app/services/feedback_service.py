@@ -38,11 +38,16 @@ async def submit_feedback(
 async def list_feedback(
     db: AsyncSession,
     *,
-    category: Optional[FeedbackCategory] = None,
+    category: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[FeedbackEntry]:
-    """Read feedback entries, newest first, optionally filtered by category."""
+    """Read feedback entries, newest first, optionally filtered by category.
+
+    `category` is the raw query-param string (BUG / FEATURE_REQUEST / GENERAL).
+    Conversion to FeedbackCategory happens at the SQL level by comparing against
+    the enum's `.value`, so invalid string values simply return zero rows rather
+    than raising."""
     stmt = select(FeedbackEntry).order_by(FeedbackEntry.created_at.desc())
     if category is not None:
         stmt = stmt.where(FeedbackEntry.category == category)
