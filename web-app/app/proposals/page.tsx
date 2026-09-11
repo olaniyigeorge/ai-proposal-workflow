@@ -2,6 +2,7 @@ import React from 'react';
 import { listProposals } from '@/lib/api/client';
 import { ProposalSummaryResponse } from '@/lib/api/types';
 import { ProposalList } from '@/components/proposals/ProposalList';
+import { getServerAuthToken } from '@/lib/auth/serverSession';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,8 @@ export default async function ProposalsPage() {
   let errorNotice: string | null = null;
 
   try {
-    proposals = await listProposals(0, 50);
+    const token = await getServerAuthToken();
+    proposals = await listProposals(0, 50, token);
   } catch (err: any) {
     errorNotice = err?.message || 'Failed to load proposals from backend';
   }

@@ -16,6 +16,7 @@ import { ActivityTimeline } from '@/components/proposals/ActivityTimeline';
 import { GenerateDocumentButton } from '@/components/proposals/GenerateDocumentButton';
 import { DocumentPreview } from '@/components/proposals/DocumentPreview';
 import { DeliveryPanel } from '@/components/proposals/DeliveryPanel';
+import { getServerAuthToken } from '@/lib/auth/serverSession';
 import {
   buildRequestMoreInfoMailto,
   canApproveSection,
@@ -45,7 +46,8 @@ export default async function ProposalDetailPage({ params }: PageProps) {
   let errorMessage: string | null = null;
 
   try {
-    proposal = await getProposal(id);
+    const token = await getServerAuthToken();
+    proposal = await getProposal(id, token);
   } catch (err: any) {
     if (err?.status === 404) {
       notFound();

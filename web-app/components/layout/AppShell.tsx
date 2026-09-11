@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { NavBar } from './NavBar';
+import { BackendKeepAlive } from './BackendKeepAlive';
 import { clearClientAuthToken, getClientSessionInfo } from '@/lib/auth/session';
 
 interface AppShellProps {
@@ -27,13 +28,21 @@ export function AppShell({ children }: AppShellProps) {
     router.push('/login');
   };
 
-  // If on login page, don't show shell chrome
+  // If on login page, don't show shell chrome — but still keep the backend
+  // warm, since a cold-started backend on the very first request (someone
+  // arriving at /login) is the most visible time for this to matter.
   if (pathname === '/login') {
-    return <>{children}</>;
+    return (
+      <>
+        <BackendKeepAlive />
+        {children}
+      </>
+    );
   }
 
   return (
     <div className="min-h-screen bg-white text-[#1f2429] flex flex-col md:flex-row antialiased">
+      <BackendKeepAlive />
       {/* Mobile Top Header */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-[#d8dbd9] bg-white">
         <div className="flex items-center gap-2.5">

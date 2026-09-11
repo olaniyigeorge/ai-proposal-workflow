@@ -8,7 +8,7 @@ import {
   ActivityLogEntryResponse,
   ApiError,
 } from './types';
-import { DEV_TOKEN, getClientAuthToken } from '../auth/session';
+import { getClientAuthToken } from '../auth/session';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
@@ -23,9 +23,16 @@ async function request<T>(
 ): Promise<T> {
   const { token, headers = {}, ...rest } = options;
 
+  // Server Components must pass `token` explicitly (see
+  // lib/auth/serverSession.ts::getServerAuthToken()) — this no longer
+  // guesses DEV_TOKEN when window is undefined. That guess used to send a
+  // fake token on every server-rendered request regardless of environment,
+  // which production's real backend correctly rejected as a malformed JWT
+  // ("Invalid or expired token: Not enough segments" — a confusing error
+  // for what was actually just a missing token). Falling through to no
+  // token at all here instead gets the clear "Authentication required" 401.
   const authToken =
-    token ||
-    (typeof window !== 'undefined' ? getClientAuthToken() : DEV_TOKEN);
+    token || (typeof window !== 'undefined' ? getClientAuthToken() : undefined);
 
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',

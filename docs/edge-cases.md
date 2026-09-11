@@ -4,6 +4,24 @@ Working log of edge cases discovered while building this project — the "gotcha
 
 ---
 
+## 2026-09-11 — Production proposal list showed "Invalid or expired token: Not enough segments" while local dev worked fine
+
+**Severity: High** (production-only — the proposals list was completely unusable for a real signed-in user in prod, while looking correctly signed-in in the sidebar the whole time, which makes it a confusing bug to self-diagnose)
+
+**The gap (business view):** after signing in with a real Supabase account in production, the sidebar correctly showed the real email and "Signed in" — but the Proposals page itself showed a "Backend Connection Notice: Invalid or expired token: Not enough segments" and an empty list, every time, while the exact same code path worked perfectly in local dev. "Not enough segments" is PyJWT's error for a string that isn't shaped like a JWT at all (a real JWT always has 3 dot-separated segments) — so the backend wasn't rejecting an expired or wrong token, it was being sent something that was never a JWT in the first place.
+
+**Root cause:** `app/proposals/page.tsx` and `app/proposals/[id]/page.tsx` are Next.js **Server Components** — they fetch data on the server at request time, not in the browser. The shared API client's `request()` function (`web-app/lib/api/client.ts`) decided which auth token to send with: `token || (typeof window !== 'undefined' ? getClientAuthToken() : DEV_TOKEN)`. On the server, `window` is always undefined, so this unconditionally fell back to the literal string `"dev-salesperson-token"` — a real JWT is never checked at all for a server-rendered page load. Locally, the backend's `ENVIRONMENT` is `development`, so `verify_token`'s dev-token special case matches and everything works. In production, `ENVIRONMENT` is not `development`, so that special case never fires, the code falls through to real JWT verification, and `jwt.get_unverified_header("dev-salesperson-token")` immediately fails with "not enough segments" — because that string was never a JWT to begin with. This is exactly the same *shape* of bug as the earlier cookie-name mismatch (a fallback silently substituting a fake value instead of surfacing "there's no real token here"), just triggered by a different code path (SSR vs. client-side cookie reads) — see the pattern noted in `docs/submission/reflections.md`.
+
+**Not the approval gate** (`salesperson_accounts`, decisions #22) — that check happens after JWT verification succeeds and returns a 403 with a distinctly different message ("Your account is pending approval..."). This failure never even reached that code, since the token itself was rejected as malformed before any approval status could be checked.
+
+**The fix (implemented 2026-09-11):** Server Components can't read browser cookies via `document.cookie` (no `window`), but Next.js's `next/headers` `cookies()` API works server-side — added `web-app/lib/auth/serverSession.ts::getServerAuthToken()` using it, and updated both Server Component pages to fetch the real cookie value and pass it explicitly as the `token` argument to `listProposals`/`getProposal`, rather than relying on the API client's own guess. The API client's fallback for "no token, no window" now sends no Authorization header at all instead of a fake one — an unauthenticated server-rendered request now fails with a clear "Authentication required" 401 instead of a confusing malformed-token error. Also removed `getClientAuthToken()`'s own client-side "no cookie found → return DEV_TOKEN" fallback, now that there's no dev-login UI button — an unauthenticated browser session should redirect to `/login` (which `AuthGuard` already does when the token is genuinely absent), not silently authenticate as a fake dev user.
+
+**Where it lives:** `web-app/lib/auth/session.ts`, `web-app/lib/auth/serverSession.ts` (new), `web-app/lib/api/client.ts`, `web-app/app/proposals/page.tsx`, `web-app/app/proposals/[id]/page.tsx`.
+
+**Open follow-up:** any *other* Server Component that fetches from the backend in the future must remember to call `getServerAuthToken()` and pass it explicitly — nothing enforces this at a type level, so a new server-rendered page that forgets this will silently get the "no token" (clear 401) behavior rather than a wrong-but-passing one, which is a safe failure mode but still worth a lint rule or a shared data-fetching wrapper if more server-rendered pages get added.
+
+---
+
 ## 2026-09-11 — Real logins started failing with "The specified alg value is not allowed"
 
 **Severity: High** (production-blocking for real login, not cosmetic — every real-account request failed with a 401 on whichever Supabase signing mode we didn't anticipate)
