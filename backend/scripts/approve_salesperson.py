@@ -21,7 +21,8 @@ import asyncio
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.models.salesperson_account import SalespersonAccount, SalespersonAccountStatus
+from app.models.salesperson_account import SalespersonAccount
+from app.services.salesperson_account_service import approve
 
 
 async def approve_by_email(email: str) -> None:
@@ -36,9 +37,12 @@ async def approve_by_email(email: str) -> None:
             return
 
         previous_status = account.status.value
-        account.status = SalespersonAccountStatus.APPROVED
-        account.approved_by = "bootstrap-script"
-        await db.commit()
+        # Reuses the same service function the /auth/pending/{id}/approve
+        # endpoint calls, rather than re-setting status/approved_by/approved_at
+        # here by hand — a prior version of this script duplicated that logic
+        # and forgot approved_at, leaving it permanently NULL for every
+        # bootstrap-approved account (docs/edge-cases.md, 2026-09-11).
+        await approve(db, account, approved_by="bootstrap-script")
         print(f"Approved {email} (was {previous_status}).")
 
 
