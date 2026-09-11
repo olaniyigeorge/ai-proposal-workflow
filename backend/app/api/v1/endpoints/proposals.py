@@ -8,8 +8,10 @@ from app.core.database import get_db
 from app.core.security import CurrentSalesperson, get_current_salesperson
 from app.domain.exceptions import (
     ApprovalGuardError,
+    DisplayNameNotSetError,
     DocumentNotReadyError,
     InvalidTransitionError,
+    ProposalAlreadyAssignedError,
     RegenerationCapExceededError,
     RegenerationInstructionRequiredError,
     SectionNotApprovableError,
@@ -52,6 +54,7 @@ from app.services.document_service import (
 )
 from app.services.generation_service import run_generation_job, start_generation
 from app.services.proposal_service import (
+    claim_proposal,
     get_proposal_by_id,
     list_proposals,
     update_section_content,
@@ -159,6 +162,39 @@ async def update_section(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
     except SectionNotEditableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+
+    return proposal
+
+
+@router.post(
+    "/{proposal_id}/claim",
+    response_model=ProposalDetailResponse,
+    summary="Self-claim a genuinely unassigned proposal (decisions #20 — manual, never auto-matched)",
+)
+async def claim_proposal_endpoint(
+    proposal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
+) -> ProposalDetailResponse:
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Proposal with ID {proposal_id} not found",
+        )
+
+    if not current.display_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(DisplayNameNotSetError()),
+        )
+
+    try:
+        proposal = await claim_proposal(db, proposal, current.display_name, current.email)
+    except ProposalAlreadyAssignedError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
