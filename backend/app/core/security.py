@@ -40,6 +40,7 @@ class CurrentSalesperson(BaseModel):
     user_id: str
     email: str
     role: str = "salesperson"
+    display_name: Optional[str] = None
 
 
 def verify_token(token: str) -> dict:
@@ -134,6 +135,7 @@ async def get_current_salesperson(
     # this is what stops that alone from being enough to use the app. The
     # dev token has no real Supabase user behind it, so it bypasses this
     # table entirely rather than getting a phantom pending row.
+    display_name: Optional[str] = None
     if user_id != DEV_USER_ID:
         account = await get_or_create_pending(db, str(user_id), str(email))
         if account.status != SalespersonAccountStatus.APPROVED:
@@ -145,5 +147,8 @@ async def get_current_salesperson(
                     else "Your account request was not approved."
                 ),
             )
+        display_name = account.display_name
 
-    return CurrentSalesperson(user_id=str(user_id), email=str(email), role="salesperson")
+    return CurrentSalesperson(
+        user_id=str(user_id), email=str(email), role="salesperson", display_name=display_name
+    )
