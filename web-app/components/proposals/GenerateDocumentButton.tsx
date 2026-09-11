@@ -63,18 +63,18 @@ export function GenerateDocumentButton({ proposalId, status }: GenerateDocumentB
       <button
         onClick={start}
         disabled={isStarting || isGenerating}
-        className="w-full py-2.5 px-4 rounded-lg bg-teal-950/40 border border-teal-800/40 hover:bg-teal-900/40 text-teal-300 font-medium text-xs flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+        className="w-full py-2.5 px-4 rounded-lg bg-teal-50 border border-teal-200 hover:bg-teal-100 text-teal-800 font-medium text-xs flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
       >
         {isGenerating || isStarting ? (
           <>
-            <span className="w-3 h-3 rounded-full border-2 border-teal-300/40 border-t-teal-300 animate-spin" />
+            <span className="w-3 h-3 rounded-full border-2 border-teal-700/40 border-t-teal-700 animate-spin" />
             Rendering PDF…
           </>
         ) : (
           label
         )}
       </button>
-      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>
   );
 }
