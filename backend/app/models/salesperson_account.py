@@ -60,3 +60,13 @@ class SalespersonAccount(Base, TimestampMixin):
     approved_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # The name a salesperson sets for themselves (self-service, see
+    # PATCH /auth/me) — this is what gets written into a proposal's free-text
+    # `salesperson_name` column when they self-claim an unassigned proposal
+    # (services/proposal_service.py::claim_proposal). Unique so two accounts
+    # can't claim proposals under an indistinguishable name; nullable because
+    # a freshly-approved account may not have set one yet (they can't claim
+    # anything until they do — see the claim endpoint's own guard).
+    display_name: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True, nullable=True
+    )
