@@ -1,21 +1,26 @@
 @import "tailwindcss";
 
+/* Design tokens pulled from koyatalent.com's own compiled CSS — same source
+   as backend/app/domain/document.py (the PDF) and delivery.py (the client
+   email), so the dashboard, the PDF, and the email all read as one brand
+   instead of three. See docs/edge-cases.md, 2026-09-10, for where these
+   values came from. */
 :root {
-  --background: #090a0f;
-  --foreground: #f1f5f9;
-  --surface-base: #0d0f17;
-  --surface-card: #121520;
-  --surface-card-hover: #171b29;
-  --surface-border: #1e2436;
-  --surface-border-hover: #2e3752;
-  --muted-text: #8b95a8;
-  --primary-accent: #6366f1;
+  --background: #ffffff;
+  --foreground: #1f2429; /* ink */
+  --surface-base: #f5f6f5; /* sidebar / subtle section bg */
+  --surface-card: #ffffff;
+  --surface-card-hover: #f5f6f5;
+  --surface-border: #d8dbd9;
+  --surface-border-hover: #c2c7c4;
+  --muted-text: #5c646c;
+  --primary-accent: #2563eb;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: "Geist Sans", var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
 }
 
@@ -33,23 +38,24 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #090a0f;
+  background: #f5f6f5;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f2538;
+  background: #d8dbd9;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2e3752;
+  background: #c2c7c4;
 }
 
-/* Glow & card effects */
+/* Glow & card effects — softened for a light surface (a dark-theme glow
+   reads as a smudge on white) */
 .glow-primary {
-  box-shadow: 0 0 24px -4px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 24px -6px rgba(37, 99, 235, 0.18);
 }
 
 .glow-card {
-  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 24px -8px rgba(31, 36, 41, 0.12);
 }
 
 /* Entrance animations — subtle, short, and respect reduced-motion */
