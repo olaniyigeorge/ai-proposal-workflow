@@ -64,26 +64,26 @@ export function SectionEditor({
           disabled={isSaving}
           rows={6}
           autoFocus
-          className="w-full text-sm text-zinc-100 leading-relaxed bg-[#090a0f] p-4 rounded-lg border border-indigo-700/60 focus:border-indigo-500 focus:outline-none whitespace-pre-wrap disabled:opacity-60"
+          className="w-full text-sm text-[#1f2429] leading-relaxed bg-[#f5f6f5] p-4 rounded-lg border border-[#2563eb]/40 focus:border-[#2563eb] focus:outline-none whitespace-pre-wrap disabled:opacity-60"
         />
-        {error && <p className="text-xs text-rose-400">{error}</p>}
+        {error && <p className="text-xs text-rose-600">{error}</p>}
         <div className="flex items-center gap-2">
           <button
             onClick={save}
             disabled={isSaving}
-            className="px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 rounded bg-[#1f2429] hover:bg-[#111417] text-white text-[11px] font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {isSaving ? 'Saving…' : 'Save'}
           </button>
           <button
             onClick={cancelEditing}
             disabled={isSaving}
-            className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-[11px] font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 rounded bg-[#f5f6f5] hover:bg-[#eef0ee] border border-[#d8dbd9] text-[#1f2429] text-[11px] font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             Cancel
           </button>
           {invalidatesApproval && (
-            <span className="text-[11px] text-amber-400/90">
+            <span className="text-[11px] text-amber-700">
               Saving will move this proposal back to In Review.
             </span>
           )}
@@ -94,9 +94,9 @@ export function SectionEditor({
 
   return (
     <div className="space-y-3">
-      <div className="text-sm text-zinc-300 leading-relaxed bg-[#090a0f] p-4 rounded-lg border border-[#1e2436] font-normal min-h-[5rem] whitespace-pre-wrap">
+      <div className="text-sm text-[#374151] leading-relaxed bg-[#f5f6f5] p-4 rounded-lg border border-[#d8dbd9] font-normal min-h-[5rem] whitespace-pre-wrap">
         {section.content || (
-          <span className="text-zinc-600 italic">
+          <span className="text-[#9aa0a6] italic">
             No content generated yet. Will populate after Claude synthesis.
           </span>
         )}
@@ -105,7 +105,7 @@ export function SectionEditor({
         onClick={startEditing}
         disabled={!editable}
         title={editable ? undefined : 'Not editable in this proposal status'}
-        className="px-2.5 py-1 rounded bg-indigo-950/60 border border-indigo-800/50 text-indigo-300 text-[11px] font-medium hover:bg-indigo-900/60 disabled:bg-zinc-800/50 disabled:border-zinc-700/50 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors"
+        className="px-2.5 py-1 rounded bg-[#2563eb]/10 border border-[#2563eb]/20 text-[#2563eb] text-[11px] font-medium hover:bg-[#2563eb]/15 disabled:bg-[#f5f6f5] disabled:border-[#d8dbd9] disabled:text-[#9aa0a6] disabled:cursor-not-allowed transition-colors"
       >
         Edit Content
       </button>
