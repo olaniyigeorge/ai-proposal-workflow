@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { NavBar } from './NavBar';
-import { DEV_TOKEN } from '@/lib/auth/session';
+import { clearClientAuthToken, getClientSessionInfo } from '@/lib/auth/session';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -12,7 +11,21 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [session, setSession] = useState<{ email: string | null; isDevToken: boolean }>({
+    email: null,
+    isDevToken: false,
+  });
+
+  useEffect(() => {
+    setSession(getClientSessionInfo());
+  }, [pathname]);
+
+  const handleSignOut = () => {
+    clearClientAuthToken();
+    router.push('/login');
+  };
 
   // If on login page, don't show shell chrome
   if (pathname === '/login') {
@@ -20,20 +33,20 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col md:flex-row antialiased">
+    <div className="min-h-screen bg-white text-[#1f2429] flex flex-col md:flex-row antialiased">
       {/* Mobile Top Header */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-[#1e2436] bg-[#0d0f17]">
+      <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-[#d8dbd9] bg-white">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-sm">
-            P
+          <div className="w-8 h-8 rounded-lg bg-[#1f2429] flex items-center justify-center font-bold text-white shadow-sm">
+            K
           </div>
-          <span className="font-semibold text-sm tracking-tight text-white">
+          <span className="font-semibold text-sm tracking-tight text-[#1f2429]">
             Proposal Workflow
           </span>
         </div>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800"
+          className="p-2 rounded-md text-[#5c646c] hover:text-[#1f2429] hover:bg-[#f5f6f5]"
           aria-label="Toggle Navigation"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -48,72 +61,78 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Mobile Dropdown Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-[#1e2436] bg-[#0d0f17] p-4 space-y-4">
+        <div className="md:hidden border-b border-[#d8dbd9] bg-white p-4 space-y-4">
           <NavBar />
-          <div className="pt-3 border-t border-[#1e2436] flex items-center justify-between text-xs text-zinc-400">
-            <span>Salesperson Role</span>
-            <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono text-[10px]">
-              Dev Auth
-            </span>
+          <div className="pt-3 border-t border-[#d8dbd9] flex items-center justify-between text-xs text-[#5c646c]">
+            <span className="truncate">{session.email || 'Salesperson'}</span>
+            <button
+              onClick={handleSignOut}
+              className="px-2 py-0.5 rounded-full bg-[#f5f6f5] border border-[#d8dbd9] text-[#1f2429] font-mono text-[10px] cursor-pointer hover:bg-[#eef0ee]"
+            >
+              Sign Out
+            </button>
           </div>
         </div>
       )}
 
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex md:w-64 flex-col flex-shrink-0 border-r border-[#1e2436] bg-[#0d0f17]/90 backdrop-blur-md">
+      {/* Desktop Sidebar — pinned to the viewport height (md:h-screen +
+          sticky), with only the nav section scrolling internally, so the
+          session footer (and its Sign Out action) always stays on screen
+          instead of being pushed below the fold on a tall page. */}
+      <aside className="hidden md:flex md:w-64 md:h-screen md:sticky md:top-0 flex-col flex-shrink-0 border-r border-[#d8dbd9] bg-[#f5f6f5] overflow-hidden">
         {/* Brand Header */}
-        <div className="h-16 flex items-center gap-3 px-6 border-b border-[#1e2436]">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center font-bold text-white shadow-md shadow-indigo-500/20">
-            P
+        <div className="h-16 flex items-center gap-3 px-6 border-b border-[#d8dbd9] flex-shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-[#1f2429] flex items-center justify-center font-bold text-white shadow-sm">
+            K
           </div>
           <div>
-            <div className="font-semibold text-sm tracking-tight text-white leading-none">
+            <div className="font-semibold text-sm tracking-tight text-[#1f2429] leading-none">
               Proposal Workflow
             </div>
-            <div className="text-[11px] text-zinc-500 font-medium mt-1">
+            <div className="text-[11px] text-[#5c646c] font-medium mt-1">
               Salesperson Review UI
             </div>
           </div>
         </div>
 
-        {/* Navigation */}
-        <div className="flex-1 px-4 py-6">
-          <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-3 mb-2">
+        {/* Navigation — the only part of the sidebar that scrolls */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">
+          <div className="text-[10px] font-semibold text-[#8a8f8c] uppercase tracking-wider px-3 mb-2">
             Workspace
           </div>
           <NavBar />
         </div>
 
-        {/* User / Session Footer */}
-        <div className="p-4 border-t border-[#1e2436] bg-[#0b0d14]">
+        {/* User / Session Footer — always visible, never scrolls away */}
+        <div className="flex-shrink-0 p-4 border-t border-[#d8dbd9] bg-white">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-xs font-semibold text-zinc-300">
+            <div className="w-8 h-8 rounded-full bg-[#eef0ee] border border-[#d8dbd9] flex items-center justify-center text-xs font-semibold text-[#1f2429]">
               SP
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-zinc-200 truncate">
-                Salesperson
+              <div className="text-xs font-medium text-[#1f2429] truncate">
+                {session.email || 'Salesperson'}
               </div>
-              <div className="text-[11px] text-zinc-500 truncate flex items-center gap-1.5 mt-0.5">
+              <div className="text-[11px] text-[#5c646c] truncate flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span>Dev Authenticated</span>
+                <span>{session.isDevToken ? 'Dev Authenticated' : 'Signed in'}</span>
               </div>
             </div>
           </div>
-          <div className="mt-3 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-500">
+          <div className="mt-3 pt-2 border-t border-[#eef0ee] flex items-center justify-between text-[10px] text-[#5c646c]">
             <span>Role: salesperson</span>
-            <Link
-              href="/login"
-              className="text-indigo-400 hover:text-indigo-300 hover:underline"
+            <button
+              onClick={handleSignOut}
+              className="text-[#2563eb] hover:text-[#1d4ed8] hover:underline cursor-pointer"
             >
-              Switch
-            </Link>
+              Sign Out
+            </button>
           </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 min-w-0 flex flex-col bg-[#090a0f] overflow-y-auto">
+      <main className="flex-1 min-w-0 flex flex-col bg-white overflow-y-auto">
         <div className="flex-1 px-4 py-6 sm:px-6 md:px-8 lg:px-10 max-w-7xl w-full mx-auto">
           {children}
         </div>
