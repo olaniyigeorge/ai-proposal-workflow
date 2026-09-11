@@ -4,7 +4,7 @@ from sqlalchemy.orm import declarative_base
 
 from app.core.config import settings
 
-engine_kwargs = {"echo": settings.DEBUG}
+engine_kwargs = {"echo": settings.SQL_ECHO}
 if "sqlite" in settings.DATABASE_URL:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 
