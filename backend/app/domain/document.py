@@ -3,17 +3,26 @@ Branded proposal HTML — rendered to PDF by adapters/pdf_renderer.py. Pure
 domain logic: builds a string, no I/O, no weasyprint import.
 
 Structure mirrors docs/reference/proposal-template.md (6 sections, in
-`ProposalSection.order_index` order). Colors/fonts are pulled from
-koyatalent.com's actual compiled CSS (fetched 2026-09-10 — no design asset
-existed in this repo before then): ink `#1f2429`, muted text `#5c646c`,
-light section background `#eef0ee`, border `#d8dbd9`, and the site's CTA
-accent blue `#2563eb` (used on-site for its own call-to-action links/borders
-— see docs/edge-cases.md for the exact source). Font stack matches the
-site's `--font` custom property exactly (`Geist Sans` first, falling back to
-system sans-serif) — WeasyPrint has no network access to Google's font CDN
-during rendering, so this intentionally never fetches a font file; if "Geist
-Sans" isn't installed where this runs, it silently falls back rather than
-failing the render.
+`ProposalSection.order_index` order). Colors/fonts come from
+app/domain/design_tokens.py (see that module for why this backend can't
+literally import the dashboard's own token source). Font stack matches the
+dashboard's `--font` custom property exactly (`Geist Sans` first, falling
+back to system sans-serif) — WeasyPrint has no network access to Google's
+font CDN during rendering, so this intentionally never fetches a font file;
+if "Geist Sans" isn't installed where this runs, it silently falls back
+rather than failing the render.
+
+Section rendering (revised again 2026-09-11, superseding the bordered-card
+layout from docs/design-system-redesign-and-ownership-concerns.md §6-§8 —
+see docs/edge-cases.md "Pinned sections read as pasted-in fragments, not
+part of one document"): a client proposal reading as six boxed cards stacked
+on a page looks like sections were joined rather than written as one
+document — closer to a component library than a piece of business writing.
+Sections now render as continuous typeset prose: a numbered running heading
+(an accent-colored index + title under a thin rule, no card chrome around
+the body) followed by real `<p>`/`<ul>`/`<ol>` markup instead of one
+`white-space:pre-wrap` blob. Brand tokens (color/font) are unchanged from
+the card version — this is a layout change, not a rebrand.
 
 Every user-controlled string (client name, company name, section content —
 anything that ultimately traces back to a Google Form answer) is HTML-escaped
@@ -27,17 +36,8 @@ import html
 import re
 from datetime import datetime
 
+from app.domain.design_tokens import ACCENT, BORDER, BRAND_NAME, FONT_STACK, INK, MUTED
 from app.models.proposal import Proposal, ProposalSection
-
-BRAND_NAME = "Koya Talent"
-
-# koyatalent.com's own design tokens (see module docstring).
-INK = "#1f2429"
-MUTED = "#5c646c"
-ACCENT = "#2563eb"
-BG_LIGHT = "#eef0ee"
-BORDER = "#d8dbd9"
-FONT_STACK = '"Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 
 _CSS = f"""
 @page {{
@@ -57,17 +57,24 @@ body {{
     line-height: 1.5;
 }}
 .doc-header {{
-    border-bottom: 3px solid {ACCENT};
-    padding-bottom: 14px;
-    margin-bottom: 28px;
+    border-bottom: 1px solid {BORDER};
+    padding-bottom: 12px;
+    margin-bottom: 20px;
 }}
+/* rgba(37, 99, 235, ...) is ACCENT's rgb() decomposition — WeasyPrint's CSS
+   engine doesn't support the color-mix() shorthand a browser would use here. */
 .brand {{
-    font-size: 11pt;
+    display: inline-block;
+    font-size: 9.5pt;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: {ACCENT};
-    margin-bottom: 10px;
+    background: rgba(37, 99, 235, 0.08);
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    border-radius: 999px;
+    padding: 4px 12px;
+    margin-bottom: 12px;
 }}
 .doc-header h1 {{
     font-size: 22pt;
@@ -80,21 +87,41 @@ body {{
     margin: 0;
 }}
 .section {{
-    margin-bottom: 22px;
-    break-inside: avoid-page;
+    margin: 0 0 22px 0;
 }}
 .section h2 {{
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
     font-size: 13pt;
+    color: {INK};
+    margin: 0 0 10px 0;
+    padding-bottom: 6px;
+    border-bottom: 1.5px solid {ACCENT};
+    break-after: avoid-page;
+}}
+.section h2 .num {{
     color: {ACCENT};
-    border-bottom: 1px solid {BORDER};
-    padding-bottom: 4px;
-    margin: 0 0 8px 0;
+    font-weight: 700;
+    font-size: 10.5pt;
+    letter-spacing: 0.04em;
 }}
 .section .content {{
-    white-space: pre-wrap;
-    background: {BG_LIGHT};
-    border-radius: 3px;
-    padding: 10px 12px;
+    color: {INK};
+}}
+.section .content p {{
+    margin: 0 0 10px 0;
+}}
+.section .content p:last-child {{
+    margin-bottom: 0;
+}}
+.section .content ul,
+.section .content ol {{
+    margin: 0 0 10px 0;
+    padding-left: 20px;
+}}
+.section .content li {{
+    margin-bottom: 4px;
 }}
 .doc-footer {{
     margin-top: 36px;
@@ -128,12 +155,39 @@ def build_document_filename(proposal: Proposal) -> str:
     return f"{_slugify(proposal.client_name)}-{_slugify(proposal.company_name)}-proposal.pdf"
 
 
+_NUMBERED_LINE = re.compile(r"^\d+[.)]\s+")
+
+
+def _render_paragraphs(content: str) -> str:
+    """Turn a section's plain-text content into real prose markup instead of
+    one `white-space: pre-wrap` blob — a blank line starts a new `<p>`; a
+    block of short lines that are all numbered ("1. ...") or all bare
+    (Deliverables' one-phrase-per-line convention) renders as a list. This is
+    a formatting pass only — every word still comes from `section.content`
+    unchanged, just escaped and wrapped.
+    """
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", content.strip()) if b.strip()]
+    parts = []
+    for block in blocks:
+        lines = [line.strip() for line in block.split("\n") if line.strip()]
+        if len(lines) > 1 and all(_NUMBERED_LINE.match(line) for line in lines):
+            items = "".join(
+                f"<li>{_esc(_NUMBERED_LINE.sub('', line))}</li>" for line in lines
+            )
+            parts.append(f"<ol>{items}</ol>")
+        elif len(lines) > 1 and all(len(line.split()) <= 12 for line in lines):
+            items = "".join(f"<li>{_esc(line)}</li>" for line in lines)
+            parts.append(f"<ul>{items}</ul>")
+        else:
+            parts.append(f"<p>{_esc(block).replace(chr(10), '<br>')}</p>")
+    return "".join(parts)
+
+
 def _render_section(index: int, section: ProposalSection) -> str:
-    content_html = _esc(section.content).replace("\n", "<br>")
     return (
         f'<section class="section">'
-        f'<h2>{index}. {_esc(section.title)}</h2>'
-        f'<div class="content">{content_html}</div>'
+        f'<h2><span class="num">{index:02d}</span>{_esc(section.title)}</h2>'
+        f'<div class="content">{_render_paragraphs(section.content)}</div>'
         f"</section>"
     )
 

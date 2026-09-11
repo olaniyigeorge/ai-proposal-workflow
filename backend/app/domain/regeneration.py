@@ -14,9 +14,13 @@ MAX_REGENERATION_ATTEMPTS = 3
 
 
 def assert_section_is_regenerable(section_key: SectionKey) -> None:
-    """Raises if the section has no AI-generated content at all (Introduction,
-    Timeline, Pricing, Next Steps are pinned facts/boilerplate — there is
-    nothing for Claude to regenerate, per docs/architecture.md §4 point 4).
+    """Raises if the section has no Claude-generated content at all. As of
+    2026-09-11 every SectionKey has some generated content (a full generated
+    section, or a generated lead-in wrapped around pinned facts — see
+    docs/architecture.md §4 and domain/generation.py's module docstring), so
+    this is currently a no-op for every key; kept as the single guard call
+    site so a future section type that's ever purely non-generated has
+    somewhere to be excluded without touching callers.
     """
     if section_key not in GENERATED_SECTION_KEYS:
         raise SectionNotRegenerableError(section_key)

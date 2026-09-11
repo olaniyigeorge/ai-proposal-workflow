@@ -4,8 +4,10 @@ that are not pure pinned-fact passthroughs. Pure domain logic: no I/O, no
 anthropic import (that lives in adapters/claude_client.py).
 
 Per `docs/reference/proposal-template.md` (the actual reference template —
-see `docs/intake-schema.md` "Proposal sections"), three of the six template
-sections require an actual generation call:
+see `docs/intake-schema.md` "Proposal sections"), every one of the six
+template sections now goes through a generation call (revised 2026-09-11 —
+see docs/edge-cases.md "Pinned sections read as pasted-in fragments, not
+part of one document"):
 
   1. Introduction          — generated: paraphrases `client_needs_summary` +
                               `goals_and_objectives` into clean, professional
@@ -13,9 +15,21 @@ sections require an actual generation call:
                               intake answers verbatim (see below)
   2. Proposed Solution     — `project_scope` verbatim + generated `recommended_approach`
   3. Deliverables          — generated from `recommended_services`
-  4. Timeline              — pinned verbatim (no generation)
-  5. Pricing               — pinned verbatim (no generation)
-  6. Next Steps            — static boilerplate (no generation)
+  4. Timeline              — `proposed_timeline` verbatim, prefixed by a short
+                              generated lead-in so it reads as prose, not a
+                              pasted date range
+  5. Pricing               — `estimated_pricing` verbatim (currency-normalized,
+                              see `normalize_pricing_display`), prefixed by a
+                              short generated lead-in
+  6. Next Steps            — fully generated closing/CTA paragraph (no
+                              per-proposal facts to pin here beyond what's
+                              already in the canonical facts block)
+
+Timeline and Pricing follow the same "pin the fact, generate the frame
+around it" shape as Proposed Solution — the exact dates/numbers are never
+something Claude is asked to restate, only to introduce, so a regeneration
+can change tone/wording without any risk of drifting the number a client
+will actually be quoted.
 
 **Introduction was pinned-only until 2026-09-10** (client_needs_summary and
 goals_and_objectives inserted verbatim into the reference template's fixed
@@ -37,13 +51,15 @@ sections (edge case: "Generated sections run long; client skim reading
 suffers").
 """
 
+import re
+
 from app.models.proposal import Proposal, SectionKey
 
-# Sections a full-generation job must call Claude for. Every other SectionKey
-# keeps the template_default content intake_service.py already wrote.
-GENERATED_SECTION_KEYS: frozenset[SectionKey] = frozenset(
-    {SectionKey.INTRODUCTION, SectionKey.PROPOSED_SOLUTION, SectionKey.DELIVERABLES}
-)
+# Every section now has a Claude call in it somewhere — either fully
+# generated (Introduction, Deliverables, Next Steps) or a generated lead-in
+# wrapped around a pinned/verbatim fact block (Proposed Solution, Timeline,
+# Pricing). See module docstring for the 2026-09-11 revision.
+GENERATED_SECTION_KEYS: frozenset[SectionKey] = frozenset(SectionKey)
 
 # Word targets per generated section — deliberately tight, matching the
 # reference template's own brevity (a client skims a proposal; padding costs
@@ -52,7 +68,36 @@ WORD_TARGETS: dict[SectionKey, str] = {
     SectionKey.INTRODUCTION: "60-100 words",
     SectionKey.PROPOSED_SOLUTION: "120-200 words",
     SectionKey.DELIVERABLES: "60-120 words",
+    SectionKey.TIMELINE: "15-30 words",
+    SectionKey.PRICING: "15-30 words",
+    SectionKey.NEXT_STEPS: "40-70 words",
 }
+
+_CURRENCY_SYMBOLS = ("$", "€", "£", "¥")
+
+
+def normalize_pricing_display(raw: str) -> str:
+    """Prefix a bare number with `$` so pricing reads unambiguously as a
+    dollar figure in the client-facing document, without double-prefixing a
+    value that already carries a currency symbol.
+
+    Deliberately conservative: only prefixes the *whole field* once, and
+    only when the field, trimmed, starts with a digit — e.g. "16000 flat
+    fee" -> "$16000 flat fee", but "$16,000 up front, 5000 on completion"
+    (already has a symbol) and "Custom, based on final scope" (doesn't start
+    with a number) are both left untouched. This intentionally does not try
+    to find and prefix every individual number embedded in free text (e.g.
+    a second bare number later in the same string) — `estimated_pricing` is
+    unstructured free text from the intake form, not itemized line items,
+    and guessing which embedded numbers are prices risks corrupting ones
+    that aren't (a day count, a percentage). See docs/edge-cases.md.
+    """
+    stripped = raw.strip()
+    if not stripped or any(symbol in stripped for symbol in _CURRENCY_SYMBOLS):
+        return raw
+    if re.match(r"^\d", stripped):
+        return f"${stripped}"
+    return raw
 
 # Fixed house tone derived from the reference proposal template (CLAUDE.md /
 # architecture.md §4 point 2). Stored once, layered under any future per-call
@@ -94,8 +139,17 @@ def build_system_prompt() -> str:
         "- Use only the facts given to you. Never invent client details, "
         "dates, prices, or commitments not present in the facts provided.\n"
         "- Never restate pricing, dates, or the client/company name as your "
-        "own paraphrase if a pinned section elsewhere already states them "
-        "verbatim — focus on the narrative this section is asked for.\n"
+        "own paraphrase if a pinned fact block is appended after your text "
+        "in this same section (you'll be told when that's the case) or "
+        "already stated verbatim elsewhere in the proposal — focus on the "
+        "narrative this section is asked for and let the pinned fact speak "
+        "for itself.\n"
+        "- This section is one part of a single proposal document the "
+        "client reads start to finish, not a standalone note. Write it so "
+        "it flows into the surrounding sections: don't repeat the section's "
+        "own title in your text, don't use meta phrases like \"in this "
+        "section\" or \"this document\", and don't re-greet or re-introduce "
+        "the client if the section isn't the Introduction.\n"
         "- Stay within the word target given for this section. Going over "
         "it is treated as a failure to follow instructions, not thoroughness "
         "— the client skim-reads this, and a salesperson has to manually "
@@ -137,9 +191,33 @@ def _section_task_description(section_key: SectionKey, word_target: str) -> str:
             f"as short phrases (not full sentences). Target length: "
             f"{word_target}."
         )
-    raise ValueError(
-        f"No task description for non-generated section: {section_key.value}"
-    )
+    if section_key == SectionKey.TIMELINE:
+        return (
+            "Write a one-sentence lead-in for the Timeline section. The "
+            "exact proposed timeline (dates/durations) is appended verbatim "
+            "immediately after your text, so do not state, restate, or "
+            "paraphrase any specific date, duration, or milestone yourself "
+            "— just introduce that a timeline follows, in a way that flows "
+            f"naturally from the section before it. Target length: {word_target}."
+        )
+    if section_key == SectionKey.PRICING:
+        return (
+            "Write a one- or two-sentence lead-in for the Pricing section. "
+            "The exact estimated cost is appended verbatim immediately "
+            "after your text, so do not state, restate, or paraphrase any "
+            "specific number yourself. You may add a brief, standard note "
+            "that pricing can be adjusted if the client's needs change "
+            f"during the project. Target length: {word_target}."
+        )
+    if section_key == SectionKey.NEXT_STEPS:
+        return (
+            "Write the closing Next Steps section: invite the client to "
+            "move forward (e.g. reviewing/signing an agreement and "
+            "scheduling a kickoff), thank them, and invite questions. Do "
+            "not invent a specific date, deliverable, or commitment beyond "
+            f"what is already stated in the facts. Target length: {word_target}."
+        )
+    raise ValueError(f"No task description for section: {section_key.value}")
 
 
 def build_user_prompt(proposal: Proposal, section_key: SectionKey) -> str:
@@ -205,14 +283,17 @@ def build_regeneration_prompt(
 
 
 def pinned_prefix_for_section(proposal: Proposal, section_key: SectionKey) -> str:
-    """For PROPOSED_SOLUTION, the verbatim pinned prefix its final content is
-    built on top of (see assemble_section_content). For INTRODUCTION and
-    DELIVERABLES, which are pure generated content with no pinned prefix in
-    the final output, this instead supplies the pre-generation placeholder
-    shown in the section before Generate is first clicked — the client's raw
-    answers, visible but not yet paraphrased. Single source of truth shared
-    by intake_service.py (first assembly) and services/regeneration_service.py
-    (every regeneration) so the two can never drift apart on the exact wording.
+    """For PROPOSED_SOLUTION, TIMELINE, and PRICING, the verbatim pinned fact
+    block their final content is built around (see assemble_section_content)
+    — always recomputed fresh from the live `Proposal` fields, never read
+    back from a section's previous content, so a regeneration can never drift
+    from the actual scope/timeline/price on file. For INTRODUCTION,
+    DELIVERABLES, and NEXT_STEPS, which are pure generated content with no
+    pinned fact block in the final output, this instead supplies the
+    pre-generation placeholder shown in the section before Generate is first
+    clicked. Single source of truth shared by intake_service.py (first
+    assembly) and services/regeneration_service.py (every regeneration) so
+    the two can never drift apart on the exact wording.
     """
     if section_key == SectionKey.INTRODUCTION:
         return (
@@ -223,18 +304,33 @@ def pinned_prefix_for_section(proposal: Proposal, section_key: SectionKey) -> st
         return f"Scope:\n{proposal.project_scope}"
     if section_key == SectionKey.DELIVERABLES:
         return f"Services & Deliverables:\n{proposal.recommended_services}"
+    if section_key == SectionKey.TIMELINE:
+        return proposal.proposed_timeline
+    if section_key == SectionKey.PRICING:
+        return normalize_pricing_display(proposal.estimated_pricing)
+    if section_key == SectionKey.NEXT_STEPS:
+        return "1. Review and approve the proposal.\n2. Execute agreement.\n3. Schedule kickoff meeting."
     raise ValueError(f"No pinned prefix defined for section: {section_key.value}")
 
 
 def assemble_section_content(section_key: SectionKey, pinned_content: str, generated_text: str) -> str:
-    """Combine a section's pinned/verbatim prefix (if any) with Claude's
-    generated text. Only PROPOSED_SOLUTION has a pinned prefix (`project_scope`
-    verbatim) that must survive alongside the generated `recommended_approach`
-    — Introduction and Deliverables are pure generated content (their
-    pinned_content argument is the pre-generation placeholder only, not part
-    of the final assembled section).
+    """Combine a section's pinned/verbatim fact block (if any) with Claude's
+    generated text.
+
+    - PROPOSED_SOLUTION: pinned scope first, generated approach after —
+      established pattern, unchanged.
+    - TIMELINE, PRICING: generated lead-in first, then the pinned fact
+      verbatim — the fact is never something Claude was asked to restate
+      (see `_section_task_description`), so it always reads as "here's the
+      frame, here's the number" rather than risking the model paraphrasing
+      a date or price.
+    - INTRODUCTION, DELIVERABLES, NEXT_STEPS: pure generated content: the
+      `pinned_content` argument is only the pre-generation placeholder, not
+      part of the final assembled section.
     """
     generated_text = generated_text.strip()
     if section_key == SectionKey.PROPOSED_SOLUTION:
         return f"{pinned_content}\n\n{generated_text}"
+    if section_key in (SectionKey.TIMELINE, SectionKey.PRICING):
+        return f"{generated_text}\n\n{pinned_content}"
     return generated_text

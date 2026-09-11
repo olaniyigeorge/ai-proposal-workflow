@@ -26,6 +26,7 @@ from app.domain.generation import (
     build_system_prompt,
     pinned_prefix_for_section,
 )
+from app.domain.ownership import assert_owns_proposal
 from app.domain.proposal_transitions import assert_section_editable, transition_proposal
 from app.domain.regeneration import (
     assert_can_regenerate_section,
@@ -49,7 +50,11 @@ def _find_section(proposal: Proposal, section_key: SectionKey) -> ProposalSectio
 
 
 async def start_section_regeneration(
-    db: AsyncSession, proposal: Proposal, section_key: SectionKey, instruction: str
+    db: AsyncSession,
+    proposal: Proposal,
+    section_key: SectionKey,
+    instruction: str,
+    actor_account_id: Optional[uuid.UUID] = None,
 ) -> Proposal:
     """Validate every regeneration guard synchronously (cheap, no I/O) and
     apply the only state change that must be visible immediately: forcing the
@@ -59,7 +64,13 @@ async def start_section_regeneration(
     Claude call in run_section_regeneration_job actually succeeds, so a
     request that never reaches a completed job (e.g. a server restart before
     the background task runs) never counts as a used attempt.
+
+    Ownership is enforced here, at request time — the background job itself
+    (regenerate_section) doesn't re-check it, since the request already
+    reached this far only because it passed.
     """
+    assert_owns_proposal(proposal, actor_account_id)
+
     section = _find_section(proposal, section_key)
     assert_section_editable(section_key, proposal.status)
     assert_section_is_regenerable(section_key)

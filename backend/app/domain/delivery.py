@@ -8,9 +8,15 @@ link), not free-generated text, so this is template filling, not a Claude
 call. There's nothing here for a model to paraphrase or get wrong: the
 template is already short, professional boilerplate.
 
-The HTML version reuses domain/document.py's koyatalent.com-derived design
-tokens (ink/muted/accent/background/font) so the email and the PDF it links
-to read as one brand, not two — the document link is the one "creative"
+The HTML version reuses app/domain/design_tokens.py's shared tokens (the
+same source domain/document.py's PDF reads from) so the email and the PDF
+it links to read as one brand, not two. Header/card treatment (resolved
+2026-09-11, docs/design-system-redesign-and-ownership-concerns.md §6-§8): a
+light card on a soft background echoes the dashboard's surface/border
+language rather than the dark banner this used to open with — email clients
+are a constrained medium (§7 point 3), so this stays to plain nested tables/
+divs with inline styles and no assumption that anything beyond basic
+box-model CSS survives rendering. The document link is the one "creative"
 element: a styled CTA button rather than a bare URL, since most inboxes
 render the plain-text fallback's raw link anyway but the HTML version is
 what most clients actually see.
@@ -18,10 +24,19 @@ what most clients actually see.
 
 import html
 
-from app.domain.document import ACCENT, BG_LIGHT, BORDER, FONT_STACK, INK, MUTED
+from app.domain.design_tokens import (
+    ACCENT,
+    BORDER,
+    BRAND_NAME,
+    CARD_RADIUS,
+    CARD_RADIUS_LG,
+    FONT_STACK,
+    INK,
+    MUTED,
+    SURFACE_BASE,
+    SURFACE_CARD,
+)
 from app.models.proposal import Proposal
-
-BRAND_NAME = "Koya Talent"
 
 
 def _esc(value: str) -> str:
@@ -79,17 +94,17 @@ def build_email_html(proposal: Proposal, document_link: str) -> str:
 
     return f"""<!DOCTYPE html>
 <html>
-<body style="margin:0;padding:0;background:{BG_LIGHT};font-family:{FONT_STACK};">
+<body style="margin:0;padding:0;background:{SURFACE_BASE};font-family:{FONT_STACK};">
 <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
-  <div style="background:#ffffff;border:1px solid {BORDER};border-radius:8px;overflow:hidden;">
-    <div style="background:{INK};padding:20px 28px;">
-      <span style="color:#ffffff;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;font-size:13px;">{_esc(BRAND_NAME)}</span>
+  <div style="background:{SURFACE_CARD};border:1px solid {BORDER};border-radius:{CARD_RADIUS_LG};overflow:hidden;">
+    <div style="background:{SURFACE_CARD};padding:20px 28px;border-bottom:1px solid {BORDER};">
+      <span style="display:inline-block;color:{ACCENT};font-weight:700;letter-spacing:0.08em;text-transform:uppercase;font-size:12px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.25);border-radius:999px;padding:5px 12px;">{_esc(BRAND_NAME)}</span>
     </div>
     <div style="padding:28px;color:{INK};font-size:15px;line-height:1.6;">
       <p style="margin:0 0 16px 0;">Hi {client_name},</p>
-      <p style="margin:0 0 16px 0;">Thanks again for taking the time to speak with us. Based on our conversation, we have put together a customized proposal for your review.</p>
+      <p style="margin:0 0 16px 0;">Thanks again for taking the time to speak with us. Based on our conversation and your feedback, we have put together a customized proposal for your review.</p>
       <p style="text-align:center;margin:28px 0;">
-        <a href="{link}" style="display:inline-block;background:{ACCENT};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:13px 30px;border-radius:6px;">View Your Proposal</a>
+        <a href="{link}" style="display:inline-block;background:{ACCENT};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:13px 30px;border-radius:{CARD_RADIUS};">View Your Proposal</a>
       </p>
       <p style="margin:0 0 16px 0;color:{MUTED};font-size:13px;">This document outlines the project scope, timeline, pricing details, and recommended approach.</p>
       <p style="margin:0 0 16px 0;">If you have any questions or would like to make adjustments, feel free to reach out. We are happy to iterate with you.</p>

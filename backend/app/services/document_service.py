@@ -21,6 +21,7 @@ from app.adapters.pdf_renderer import PdfRenderError, count_pdf_pages, render_pd
 from app.adapters.storage_client import StorageUploadError, upload_pdf
 from app.core.database import AsyncSessionLocal
 from app.domain.document import build_document_filename, render_proposal_html
+from app.domain.ownership import assert_owns_proposal
 from app.domain.proposal_transitions import transition_proposal
 from app.models.activity_log import ActivityEventType
 from app.models.document import DocumentArtifact
@@ -45,7 +46,9 @@ async def get_document_artifact(
     return result.scalar_one_or_none()
 
 
-async def start_document_generation(db: AsyncSession, proposal: Proposal) -> Proposal:
+async def start_document_generation(
+    db: AsyncSession, proposal: Proposal, actor_account_id: Optional[uuid.UUID] = None
+) -> Proposal:
     """Validate + apply the APPROVED -> DOCUMENT_GENERATING transition
     synchronously (cheap, no I/O — matches start_generation/
     start_section_regeneration). Raises InvalidTransitionError (via
@@ -65,6 +68,8 @@ async def start_document_generation(db: AsyncSession, proposal: Proposal) -> Pro
     `upload_pdf`'s upsert overwrites the old object in place, so no orphaned
     file is left in Storage either.
     """
+    assert_owns_proposal(proposal, actor_account_id)
+
     existing = await get_document_artifact(db, proposal.id)
     if existing is not None:
         await db.delete(existing)

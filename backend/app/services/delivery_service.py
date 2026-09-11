@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.domain.delivery import build_email_body, build_email_html, build_email_subject
 from app.domain.exceptions import DocumentNotReadyError
+from app.domain.ownership import assert_owns_proposal
 from app.domain.proposal_transitions import transition_proposal
 from app.models.activity_log import ActivityEventType
 from app.models.delivery import DeliveryRecord, DeliveryStatus
@@ -68,12 +69,15 @@ async def get_delivery_draft(db: AsyncSession, proposal: Proposal) -> Tuple[str,
     return subject, body, proposal.client_email
 
 
-async def start_delivery(db: AsyncSession, proposal: Proposal) -> Proposal:
+async def start_delivery(
+    db: AsyncSession, proposal: Proposal, actor_account_id: Optional[uuid.UUID] = None
+) -> Proposal:
     """Validate + apply the DOCUMENT_READY/DELIVERY_FAILED -> DELIVERING
     transition synchronously. Raises InvalidTransitionError (via
     transition_proposal) if the proposal isn't in a state delivery can start
     from.
     """
+    assert_owns_proposal(proposal, actor_account_id)
     transition_proposal(proposal, ProposalStatus.DELIVERING)
     await db.commit()
     await db.refresh(proposal)
