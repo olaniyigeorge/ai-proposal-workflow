@@ -11,13 +11,16 @@ from app.domain.exceptions import (
     DisplayNameNotSetError,
     DocumentNotReadyError,
     InvalidTransitionError,
+    NotProposalOwnerError,
     ProposalAlreadyAssignedError,
+    ProposalNotClaimedError,
     RegenerationCapExceededError,
     RegenerationInstructionRequiredError,
     SectionNotApprovableError,
     SectionNotEditableError,
     SectionNotFoundError,
     SectionNotRegenerableError,
+    TransferTargetInvalidError,
 )
 from app.models.proposal import SectionKey
 from app.schemas.activity import ActivityLogEntryResponse
@@ -31,6 +34,7 @@ from app.schemas.proposal import (
     RequestChangesRequest,
     SectionRegenerateRequest,
     SectionUpdateRequest,
+    TransferProposalRequest,
 )
 from app.services.activity_log_service import list_activity_for_proposal
 from app.services.approval_service import (
@@ -57,14 +61,21 @@ from app.services.proposal_service import (
     claim_proposal,
     get_proposal_by_id,
     list_proposals,
+    transfer_proposal,
+    unclaim_proposal,
     update_section_content,
 )
 from app.services.regeneration_service import (
     run_section_regeneration_job,
     start_section_regeneration,
 )
+from app.services.salesperson_account_service import get_account
 
 router = APIRouter()
+
+
+def _account_uuid(current: CurrentSalesperson) -> uuid.UUID | None:
+    return uuid.UUID(current.account_id) if current.account_id else None
 
 
 @router.get(
@@ -155,7 +166,7 @@ async def update_section(
 
     try:
         proposal = await update_section_content(
-            db, proposal, section_key, body.content, current.email
+            db, proposal, section_key, body.content, current.email, _account_uuid(current)
         )
     except SectionNotFoundError as exc:
         raise HTTPException(
@@ -164,6 +175,10 @@ async def update_section(
     except SectionNotEditableError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     return proposal
@@ -192,11 +207,95 @@ async def claim_proposal_endpoint(
             detail=str(DisplayNameNotSetError()),
         )
 
+    account_id = _account_uuid(current)
+    if account_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This session has no salesperson account to claim with.",
+        )
+
     try:
-        proposal = await claim_proposal(db, proposal, current.display_name, current.email)
+        proposal = await claim_proposal(
+            db, proposal, current.display_name, account_id, current.email
+        )
     except ProposalAlreadyAssignedError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+
+    return proposal
+
+
+@router.post(
+    "/{proposal_id}/unclaim",
+    response_model=ProposalDetailResponse,
+    summary="Release a claimed proposal back to unassigned (owner only)",
+)
+async def unclaim_proposal_endpoint(
+    proposal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
+) -> ProposalDetailResponse:
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Proposal with ID {proposal_id} not found",
+        )
+
+    try:
+        proposal = await unclaim_proposal(db, proposal, _account_uuid(current), current.email)
+    except ProposalNotClaimedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+        ) from exc
+
+    return proposal
+
+
+@router.post(
+    "/{proposal_id}/transfer",
+    response_model=ProposalDetailResponse,
+    summary="Hand a claimed proposal directly to a named colleague (owner only)",
+)
+async def transfer_proposal_endpoint(
+    proposal_id: uuid.UUID,
+    body: TransferProposalRequest,
+    db: AsyncSession = Depends(get_db),
+    current: CurrentSalesperson = Depends(get_current_salesperson),
+) -> ProposalDetailResponse:
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Proposal with ID {proposal_id} not found",
+        )
+
+    target_account = await get_account(db, body.target_account_id)
+    if target_account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Target account not found"
+        )
+
+    try:
+        proposal = await transfer_proposal(
+            db, proposal, target_account, _account_uuid(current), current.email
+        )
+    except ProposalNotClaimedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+        ) from exc
+    except TransferTargetInvalidError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
 
     return proposal
@@ -225,7 +324,7 @@ async def regenerate_section(
 
     try:
         proposal = await start_section_regeneration(
-            db, proposal, section_key, body.instruction
+            db, proposal, section_key, body.instruction, _account_uuid(current)
         )
     except SectionNotFoundError as exc:
         raise HTTPException(
@@ -238,6 +337,10 @@ async def regenerate_section(
     except RegenerationInstructionRequiredError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     # Runs after the response is sent — the actual Claude call never blocks
@@ -288,7 +391,9 @@ async def approve_section_endpoint(
         )
 
     try:
-        proposal = await approve_section(db, proposal, section_key, current.email)
+        proposal = await approve_section(
+            db, proposal, section_key, current.email, _account_uuid(current)
+        )
     except SectionNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
@@ -296,6 +401,10 @@ async def approve_section_endpoint(
     except SectionNotApprovableError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     return proposal
@@ -319,10 +428,14 @@ async def submit_for_approval_endpoint(
         )
 
     try:
-        proposal = await submit_for_approval(db, proposal, current.email)
+        proposal = await submit_for_approval(db, proposal, current.email, _account_uuid(current))
     except InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     return proposal
@@ -346,10 +459,16 @@ async def approve_proposal_endpoint(
         )
 
     try:
-        proposal = await approve_entire_proposal(db, proposal, current.email)
+        proposal = await approve_entire_proposal(
+            db, proposal, current.email, _account_uuid(current)
+        )
     except (InvalidTransitionError, ApprovalGuardError) as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     return proposal
@@ -374,10 +493,16 @@ async def request_changes_endpoint(
         )
 
     try:
-        proposal = await request_changes(db, proposal, body.reason, current.email)
+        proposal = await request_changes(
+            db, proposal, body.reason, current.email, _account_uuid(current)
+        )
     except InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     return proposal
@@ -402,10 +527,16 @@ async def reject_proposal_endpoint(
         )
 
     try:
-        proposal = await reject_proposal(db, proposal, body.reason, current.email)
+        proposal = await reject_proposal(
+            db, proposal, body.reason, current.email, _account_uuid(current)
+        )
     except InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     return proposal
@@ -431,10 +562,14 @@ async def generate_document_endpoint(
         )
 
     try:
-        proposal = await start_document_generation(db, proposal)
+        proposal = await start_document_generation(db, proposal, _account_uuid(current))
     except InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     # Runs after the response is sent — rendering + upload never block this
@@ -533,10 +668,14 @@ async def deliver_proposal_endpoint(
         )
 
     try:
-        proposal = await start_delivery(db, proposal)
+        proposal = await start_delivery(db, proposal, _account_uuid(current))
     except InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except NotProposalOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
     # Runs after the response is sent — sending the email never blocks this

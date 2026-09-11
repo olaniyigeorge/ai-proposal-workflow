@@ -72,6 +72,18 @@ class Proposal(Base, TimestampMixin):
     # means "unassigned" — picked up via a manual claim/assign step, never
     # guessed at by string-matching this field.
     salesperson_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # The stable owner behind salesperson_name (ownership enforcement,
+    # resolved 2026-09-11 — see app/domain/ownership.py). salesperson_name
+    # stays the display label written on claim/transfer; this FK is what
+    # ownership checks actually compare against, since a display_name is a
+    # mutable, user-editable string. NULL means unclaimed — nullable and
+    # SET NULL on account deletion so a claimed proposal's history/label
+    # survives an account being removed, it just becomes unowned again.
+    salesperson_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("salesperson_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     date_of_call: Mapped[str] = mapped_column(String(100), nullable=False)
     client_needs_summary: Mapped[str] = mapped_column(Text, nullable=False)
     project_scope: Mapped[str] = mapped_column(Text, nullable=False)

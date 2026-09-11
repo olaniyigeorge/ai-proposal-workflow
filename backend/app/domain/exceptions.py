@@ -1,3 +1,5 @@
+from typing import Optional
+
 from app.models.proposal import ProposalStatus, SectionKey
 
 
@@ -146,6 +148,44 @@ class ProposalAlreadyAssignedError(DomainError):
         super().__init__(
             f"Proposal {proposal_id} is already assigned to '{current_owner}'"
         )
+
+
+class NotProposalOwnerError(DomainError):
+    """Raised when a salesperson who isn't the claiming owner attempts a
+    state-changing action (edit/regenerate/approve/generate-document/deliver)
+    on a claimed proposal — ownership enforcement, strict/no-override
+    (docs/design-system-redesign-and-ownership-concerns.md §1, resolved
+    2026-09-11): once claimed, only the owner may act on it. An unclaimed
+    proposal (salesperson_account_id IS NULL) has no owner to enforce against
+    and remains open to any authenticated salesperson, unchanged from the
+    prior default (decisions #21).
+    """
+
+    def __init__(self, proposal_id, current_owner: Optional[str]) -> None:
+        self.proposal_id = proposal_id
+        self.current_owner = current_owner
+        owner_desc = f"'{current_owner}'" if current_owner else "another salesperson"
+        super().__init__(
+            f"Proposal {proposal_id} is owned by {owner_desc}; only the owner may act on it"
+        )
+
+
+class ProposalNotClaimedError(DomainError):
+    """Raised on unclaim/transfer of a proposal that has no owner to release."""
+
+    def __init__(self, proposal_id) -> None:
+        self.proposal_id = proposal_id
+        super().__init__(f"Proposal {proposal_id} is not currently claimed by anyone")
+
+
+class TransferTargetInvalidError(DomainError):
+    """Raised when transferring a proposal to an account that can't own one —
+    not APPROVED, or has never set a display_name (the same precondition
+    claim_proposal enforces on the claimer via DisplayNameNotSetError).
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Cannot transfer proposal: {reason}")
 
 
 class SectionGenerationError(DomainError):

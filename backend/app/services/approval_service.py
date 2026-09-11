@@ -3,16 +3,22 @@ proposal for approval, approving the whole proposal in one action, and the
 two ways a proposal can land back in IN_REVIEW from PENDING_APPROVAL
 (requesting changes vs. a formal reject) — see docs/system-flow.md §3.
 
-Self-approval is the expected path (decisions #14) and any authenticated
-salesperson may act on any proposal (decisions #21 working default) — no
-actor/owner check here, consistent with the rest of the codebase.
+Self-approval is the expected path (decisions #14) — any authenticated
+salesperson may approve their own proposal. But once a proposal is claimed,
+ownership enforcement (resolved 2026-09-11,
+docs/design-system-redesign-and-ownership-concerns.md §1) means only the
+claiming owner may act on it at all, approval included — every entry point
+below calls assert_owns_proposal first. An unclaimed proposal has no owner
+to enforce against and stays open to any salesperson (decisions #21).
 """
 
+import uuid
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.exceptions import InvalidTransitionError, SectionNotFoundError
+from app.domain.ownership import assert_owns_proposal
 from app.domain.proposal_transitions import assert_section_approvable, transition_proposal
 from app.models.activity_log import ActivityEventType
 from app.models.proposal import Proposal, ProposalStatus, SectionApprovalStatus, SectionKey
@@ -25,11 +31,14 @@ async def approve_section(
     proposal: Proposal,
     section_key: SectionKey,
     actor: Optional[str] = None,
+    actor_account_id: Optional[uuid.UUID] = None,
 ) -> Proposal:
     """Approve a single section. Only valid during IN_REVIEW — per
     system-flow.md §3, individual approval isn't defined for any other
     status; once PENDING_APPROVAL, use approve_entire_proposal instead.
     """
+    assert_owns_proposal(proposal, actor_account_id)
+
     section = next((s for s in proposal.sections if s.section_key == section_key), None)
     if section is None:
         raise SectionNotFoundError(section_key)
@@ -52,13 +61,17 @@ async def approve_section(
 
 
 async def submit_for_approval(
-    db: AsyncSession, proposal: Proposal, actor: Optional[str] = None
+    db: AsyncSession,
+    proposal: Proposal,
+    actor: Optional[str] = None,
+    actor_account_id: Optional[uuid.UUID] = None,
 ) -> Proposal:
     """IN_REVIEW -> PENDING_APPROVAL. Not gated on every section already
     being approved — PENDING_APPROVAL is a "final look" checkpoint, and the
     APPROVED transition itself is what enforces "no section left pending"
     (ApprovalGuardError).
     """
+    assert_owns_proposal(proposal, actor_account_id)
     transition_proposal(proposal, ProposalStatus.PENDING_APPROVAL)
     record_activity(
         db,
@@ -74,7 +87,10 @@ async def submit_for_approval(
 
 
 async def approve_entire_proposal(
-    db: AsyncSession, proposal: Proposal, actor: Optional[str] = None
+    db: AsyncSession,
+    proposal: Proposal,
+    actor: Optional[str] = None,
+    actor_account_id: Optional[uuid.UUID] = None,
 ) -> Proposal:
     """The single "approve entire proposal" action (system-flow.md §3):
     approves every still-pending section and takes the Proposal all the way
@@ -83,6 +99,8 @@ async def approve_entire_proposal(
     state transition so the transition's own ApprovalGuardError check never
     fires for sections this same call just approved.
     """
+    assert_owns_proposal(proposal, actor_account_id)
+
     if proposal.status not in (ProposalStatus.IN_REVIEW, ProposalStatus.PENDING_APPROVAL):
         raise InvalidTransitionError(proposal.status, ProposalStatus.APPROVED)
 
@@ -117,10 +135,12 @@ async def request_changes(
     proposal: Proposal,
     reason: Optional[str] = None,
     actor: Optional[str] = None,
+    actor_account_id: Optional[uuid.UUID] = None,
 ) -> Proposal:
     """PENDING_APPROVAL -> IN_REVIEW: "not ready yet, more to do" — distinct
     from reject_proposal below in that it never touches REJECTED at all.
     """
+    assert_owns_proposal(proposal, actor_account_id)
     transition_proposal(proposal, ProposalStatus.IN_REVIEW)
     record_activity(
         db,
@@ -145,6 +165,7 @@ async def reject_proposal(
     proposal: Proposal,
     reason: Optional[str] = None,
     actor: Optional[str] = None,
+    actor_account_id: Optional[uuid.UUID] = None,
 ) -> Proposal:
     """PENDING_APPROVAL -> REJECTED -> IN_REVIEW, chained in one call.
     REJECTED has no dedicated UI/resting behavior of its own — it exists as
@@ -152,6 +173,7 @@ async def reject_proposal(
     down (vs. request_changes' more casual "not ready yet"), then always
     lands back in IN_REVIEW immediately.
     """
+    assert_owns_proposal(proposal, actor_account_id)
     transition_proposal(proposal, ProposalStatus.REJECTED)
     transition_proposal(proposal, ProposalStatus.IN_REVIEW)
     record_activity(

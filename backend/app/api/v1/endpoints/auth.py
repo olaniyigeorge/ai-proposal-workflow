@@ -39,6 +39,7 @@ async def get_authenticated_salesperson(
         email=current_user.email,
         role=current_user.role,
         display_name=current_user.display_name,
+        account_id=current_user.account_id,
     )
 
 
@@ -72,6 +73,7 @@ async def update_my_display_name(
         email=current.email,
         role=current.role,
         display_name=account.display_name,
+        account_id=current.account_id,
     )
 
 

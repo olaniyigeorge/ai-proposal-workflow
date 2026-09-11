@@ -41,6 +41,12 @@ class CurrentSalesperson(BaseModel):
     email: str
     role: str = "salesperson"
     display_name: Optional[str] = None
+    # Stable salesperson_accounts.id — what proposal-ownership enforcement
+    # compares against (app/domain/ownership.py), never display_name (mutable
+    # string) or user_id (the Supabase auth subject, a different identity
+    # space). None for the dev token, which has no backing account row — it
+    # can never satisfy ownership of a claimed proposal.
+    account_id: Optional[str] = None
 
 
 def verify_token(token: str) -> dict:
@@ -136,6 +142,7 @@ async def get_current_salesperson(
     # dev token has no real Supabase user behind it, so it bypasses this
     # table entirely rather than getting a phantom pending row.
     display_name: Optional[str] = None
+    account_id: Optional[str] = None
     if user_id != DEV_USER_ID:
         account = await get_or_create_pending(db, str(user_id), str(email))
         if account.status != SalespersonAccountStatus.APPROVED:
@@ -148,7 +155,12 @@ async def get_current_salesperson(
                 ),
             )
         display_name = account.display_name
+        account_id = str(account.id)
 
     return CurrentSalesperson(
-        user_id=str(user_id), email=str(email), role="salesperson", display_name=display_name
+        user_id=str(user_id),
+        email=str(email),
+        role="salesperson",
+        display_name=display_name,
+        account_id=account_id,
     )

@@ -61,6 +61,10 @@ class RejectProposalRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class TransferProposalRequest(BaseModel):
+    target_account_id: UUID
+
+
 class ProposalSummaryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,6 +74,7 @@ class ProposalSummaryResponse(BaseModel):
     client_email: EmailStr
     company_name: str
     salesperson_name: Optional[str]
+    salesperson_account_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -83,6 +88,7 @@ class ProposalDetailResponse(BaseModel):
     client_email: EmailStr
     company_name: str
     salesperson_name: Optional[str]
+    salesperson_account_id: Optional[UUID] = None
     date_of_call: str
     client_needs_summary: str
     project_scope: str

@@ -108,13 +108,23 @@ async def process_intake(
             2,
             pinned_prefix_for_section(proposal, SectionKey.DELIVERABLES),
         ),
-        (SectionKey.TIMELINE, "Timeline", 3, payload.proposed_timeline),
-        (SectionKey.PRICING, "Pricing", 4, payload.estimated_pricing),
+        (
+            SectionKey.TIMELINE,
+            "Timeline",
+            3,
+            pinned_prefix_for_section(proposal, SectionKey.TIMELINE),
+        ),
+        (
+            SectionKey.PRICING,
+            "Pricing",
+            4,
+            pinned_prefix_for_section(proposal, SectionKey.PRICING),
+        ),
         (
             SectionKey.NEXT_STEPS,
             "Next Steps",
             5,
-            "1. Review and approve the proposal.\n2. Execute agreement.\n3. Schedule kickoff meeting.",
+            pinned_prefix_for_section(proposal, SectionKey.NEXT_STEPS),
         ),
     ]
 

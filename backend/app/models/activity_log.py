@@ -25,6 +25,8 @@ class ActivityEventType(str, enum.Enum):
     DELIVERED = "delivered"
     DELIVERY_FAILED = "delivery_failed"
     PROPOSAL_CLAIMED = "proposal_claimed"
+    PROPOSAL_UNCLAIMED = "proposal_unclaimed"
+    PROPOSAL_TRANSFERRED = "proposal_transferred"
 
 
 class ActivityLogEntry(Base, TimestampMixin):

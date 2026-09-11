@@ -55,9 +55,15 @@ class Settings(BaseSettings):
     ACTIVITY_LOG_RETENTION_MONTHS: int = 12
 
     # CORS
+    # Render's BACKEND_CORS_ORIGINS env var is authoritative in prod — this
+    # default is only a local-dev fallback plus a safety net for prod if that
+    # env var is ever unset. Must include the deployed frontend origin
+    # (docs/submission/one-pager.md) or every cross-origin request from it
+    # fails preflight with "Disallowed CORS origin" (400 on the OPTIONS call).
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "https://ai-proposal-workflow.vercel.app",
     ]
 
     # Client delivery (Phase 7) — Resend (https://resend.com), REST API.
