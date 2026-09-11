@@ -113,6 +113,41 @@ class DocumentNotReadyError(DomainError):
         )
 
 
+class DisplayNameTakenError(DomainError):
+    """Raised when a salesperson tries to set a display_name another account
+    already has — enforced at the DB level (unique constraint), this just
+    turns that IntegrityError into a clear, expected 409 instead of a 500.
+    """
+
+    def __init__(self, display_name: str) -> None:
+        self.display_name = display_name
+        super().__init__(f"'{display_name}' is already in use by another account")
+
+
+class DisplayNameNotSetError(DomainError):
+    """Raised when a salesperson tries to claim a proposal before setting
+    their own display_name — claiming writes that name into the proposal's
+    salesperson_name field, so there must be something to write.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Set your display name (in Team) before claiming a proposal")
+
+
+class ProposalAlreadyAssignedError(DomainError):
+    """Raised when claiming a proposal that already has a salesperson_name —
+    self-claim only ever applies to a genuinely unassigned proposal
+    (decisions #20); reassigning someone else's proposal is out of scope.
+    """
+
+    def __init__(self, proposal_id, current_owner: str) -> None:
+        self.proposal_id = proposal_id
+        self.current_owner = current_owner
+        super().__init__(
+            f"Proposal {proposal_id} is already assigned to '{current_owner}'"
+        )
+
+
 class SectionGenerationError(DomainError):
     """Raised when a Claude call for a section fails during a generation job.
 
