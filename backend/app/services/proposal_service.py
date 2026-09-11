@@ -5,7 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.domain.content_origin import content_origin_after_manual_edit
-from app.domain.exceptions import SectionNotFoundError
+from app.domain.exceptions import (
+    ProposalAlreadyAssignedError,
+    SectionNotFoundError,
+)
 from app.domain.proposal_transitions import assert_section_editable, transition_proposal
 from app.domain.regeneration import regeneration_invalidates_approval
 from app.models.activity_log import ActivityEventType
@@ -94,4 +97,33 @@ async def update_section_content(
         proposal.id,
         section.version,
     )
+    return proposal
+
+
+async def claim_proposal(
+    db: AsyncSession, proposal: Proposal, display_name: str, actor: Optional[str] = None
+) -> Proposal:
+    """Manual self-claim of a genuinely unassigned proposal (decisions #20's
+    review-queue claim step, resolved 2026-09-11) — never automatic, never a
+    string-match against the free-text salesperson_name a client or another
+    salesperson might have typed at intake (CLAUDE.md explicitly forbids
+    that). Only applies while salesperson_name is NULL/blank; a proposal
+    that already has an owner (however it got one) is not reassignable
+    through this endpoint.
+    """
+    if proposal.salesperson_name and proposal.salesperson_name.strip():
+        raise ProposalAlreadyAssignedError(proposal.id, proposal.salesperson_name)
+
+    proposal.salesperson_name = display_name
+    record_activity(
+        db,
+        proposal_id=proposal.id,
+        event_type=ActivityEventType.PROPOSAL_CLAIMED,
+        description=f"Proposal claimed by {display_name}",
+        actor=actor,
+        metadata={"salesperson_name": display_name},
+    )
+    await db.commit()
+    await db.refresh(proposal)
+    logger.info("Proposal %s claimed by %s", proposal.id, display_name)
     return proposal
