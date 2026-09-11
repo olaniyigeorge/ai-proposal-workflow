@@ -24,6 +24,7 @@ class ActivityEventType(str, enum.Enum):
     DOCUMENT_GENERATION_FAILED = "document_generation_failed"
     DELIVERED = "delivered"
     DELIVERY_FAILED = "delivery_failed"
+    PROPOSAL_CLAIMED = "proposal_claimed"
 
 
 class ActivityLogEntry(Base, TimestampMixin):
