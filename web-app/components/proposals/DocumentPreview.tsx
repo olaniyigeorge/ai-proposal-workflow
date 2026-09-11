@@ -41,11 +41,11 @@ export function DocumentPreview({ proposalId }: DocumentPreviewProps) {
   }, [proposalId]);
 
   if (isLoading) {
-    return <p className="text-xs text-zinc-500">Loading document…</p>;
+    return <p className="text-xs text-[#8a8f8c]">Loading document…</p>;
   }
 
   if (error) {
-    return <p className="text-xs text-rose-400">{error}</p>;
+    return <p className="text-xs text-rose-600">{error}</p>;
   }
 
   if (!doc) {
@@ -53,10 +53,10 @@ export function DocumentPreview({ proposalId }: DocumentPreviewProps) {
   }
 
   return (
-    <div className="p-3 rounded-lg bg-teal-950/20 border border-teal-800/40 text-xs space-y-2">
-      <div className="flex items-center justify-between text-teal-300">
+    <div className="p-3 rounded-lg bg-teal-50 border border-teal-200 text-xs space-y-2">
+      <div className="flex items-center justify-between text-teal-800">
         <span className="font-medium">Document Ready</span>
-        <span className="text-teal-400/70">
+        <span className="text-teal-700/70">
           {doc.page_count} page{doc.page_count === 1 ? '' : 's'} &middot; {formatBytes(doc.file_size_bytes)}
         </span>
       </div>
@@ -64,7 +64,7 @@ export function DocumentPreview({ proposalId }: DocumentPreviewProps) {
         href={doc.download_url}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-indigo-300 hover:text-indigo-200 font-medium"
+        className="inline-flex items-center gap-1.5 text-[#2563eb] hover:text-[#1d4ed8] font-medium"
       >
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
