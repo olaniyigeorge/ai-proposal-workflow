@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -19,17 +19,16 @@ class ClientResponseRecord(Base, TimestampMixin):
     """Unauthenticated client response to a delivered proposal.
 
     The client-facing page (no auth) records ACCEPTED / DECLINED / NO_RESPONSE
-    plus optional free-text feedback. One row per proposal (we dedupe on the
-    client's first meaningful response — ACCEPTED/DECLINED — and treat a
-    second click as a no-op). The link in the delivery email points at the
+    plus optional free-text feedback. One row per proposal per response type
+    (we dedupe on the client's first meaningful response — ACCEPTED/DECLINED — and
+    treat a second click as a no-op). The link in the delivery email points at the
     public client page; the POST that records the response is also public
-    (no JWT) — identity is the proposal_id in the URL + a lightweight
-    per-proposal idempotency key generated server-side and embedded in the
-    form/link to prevent replay.
+    (no JWT) — identity is the proposal_id in the URL.
 
     Where 'accepted' should move the proposal to a warmer state for the
-    salesperson (e.g. so won-rate KPIs and follow-up workflows fire), the
-    transition is handled explicitly in the service layer, not silently here.
+    salesperson (won-rate KPIs and follow-up workflows), the distinction is
+    carried in the ClientResponseRecord + activity log, not by inventing new
+    proposal status values in this phase.
     """
 
     __tablename__ = "client_response_records"
@@ -44,8 +43,6 @@ class ClientResponseRecord(Base, TimestampMixin):
         Enum(ClientResponseType, native_enum=False), nullable=False
     )
     feedback_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # Light abuse signal only — not used as identity; truncated/cleared at
-    # the boundary. Stored as a string, never interpreted as anything richer.
     client_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
 
     proposal = relationship("Proposal")
@@ -62,8 +59,7 @@ class FeedbackEntry(Base, TimestampMixin):
 
     Lightweight: category + free text + the actor's email (from the JWT, not
     a FK to keep it simple). Read-backed by the team so patterns can be
-    spotted; no in-app 'mark as addressed' state in this phase — that is a
-    follow-up, not part of the minimal feedback collection surface.
+    spotted; no in-app 'mark as addressed' state in this phase.
     """
 
     __tablename__ = "feedback_entries"

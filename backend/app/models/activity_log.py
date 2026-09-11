@@ -27,6 +27,9 @@ class ActivityEventType(str, enum.Enum):
     PROPOSAL_CLAIMED = "proposal_claimed"
     PROPOSAL_UNCLAIMED = "proposal_unclaimed"
     PROPOSAL_TRANSFERRED = "proposal_transferred"
+    CLIENT_ACCEPTED = "client_accepted"
+    CLIENT_DECLINED = "client_declined"
+    CLIENT_NO_RESPONSE = "client_no_response"
 
 
 class ActivityLogEntry(Base, TimestampMixin):
