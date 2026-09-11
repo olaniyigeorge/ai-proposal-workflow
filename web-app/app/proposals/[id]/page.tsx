@@ -16,6 +16,7 @@ import { ActivityTimeline } from '@/components/proposals/ActivityTimeline';
 import { GenerateDocumentButton } from '@/components/proposals/GenerateDocumentButton';
 import { DocumentPreview } from '@/components/proposals/DocumentPreview';
 import { DeliveryPanel } from '@/components/proposals/DeliveryPanel';
+import { ClaimProposalButton } from '@/components/proposals/ClaimProposalButton';
 import { getServerAuthToken } from '@/lib/auth/serverSession';
 import {
   buildRequestMoreInfoMailto,
@@ -115,7 +116,17 @@ export default async function ProposalDetailPage({ params }: PageProps) {
               <span className="text-[#c2c7c4]">·</span>
               <span className="font-mono text-[#374151]">{proposal.client_email}</span>
               <span className="text-[#c2c7c4]">·</span>
-              <span>Salesperson: <strong className="text-[#1f2429]">{proposal.salesperson_name}</strong></span>
+              <span className="flex items-center gap-2">
+                Salesperson:{' '}
+                {proposal.salesperson_name ? (
+                  <strong className="text-[#1f2429]">{proposal.salesperson_name}</strong>
+                ) : (
+                  <>
+                    <strong className="text-[#9aa0a6] italic">Unassigned</strong>
+                    <ClaimProposalButton proposalId={proposal.id} />
+                  </>
+                )}
+              </span>
               <span className="text-[#c2c7c4]">·</span>
               <span>Call Date: {proposal.date_of_call}</span>
             </div>
