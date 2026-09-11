@@ -20,7 +20,7 @@ export function ProposalList({ initialProposals }: ProposalListProps) {
         p.company_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.client_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.client_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.salesperson_name.toLowerCase().includes(searchQuery.toLowerCase());
+        (p.salesperson_name || '').toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesStatus =
         statusFilter === 'ALL' || p.status === statusFilter;
@@ -170,7 +170,9 @@ export function ProposalList({ initialProposals }: ProposalListProps) {
                       </Link>
                     </td>
                     <td className="py-4 px-4 text-[#374151] text-xs">
-                      {proposal.salesperson_name}
+                      {proposal.salesperson_name || (
+                        <span className="text-[#9aa0a6] italic">Unassigned</span>
+                      )}
                     </td>
                     <td className="py-4 px-4">
                       <ProposalStatusBadge status={proposal.status} size="sm" />
