@@ -68,6 +68,9 @@ class KpiSummaryResponse(BaseModel):
     proposals_by_status: dict[str, int]
     proposals_by_salesperson: dict[str, int]
     period_from: Optional[datetime] = None
+    period_to: Optional[datetime] = None
+
+
 class ClientResponseRequest(BaseModel):
     """Payload the public client page POSTs when the recipient clicks Accept or Decline."""
     response_type: ClientResponseType

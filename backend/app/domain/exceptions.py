@@ -203,3 +203,27 @@ class SectionGenerationError(DomainError):
         super().__init__(
             f"Generation failed for section '{section_key.value}': {reason}"
         )
+
+
+class ClientResponseError(DomainError):
+    """Raised when a client response cannot be recorded (proposal not found,
+
+    already-recorded duplicate, etc.). Public client page uses this to turn a
+    bad request into a clear HTTP error rather than a silent 200 with no effect.
+    """
+
+    def __init__(self, proposal_id, reason: str) -> None:
+        self.proposal_id = proposal_id
+        self.reason = reason
+        super().__init__(f"Client response error for proposal {proposal_id}: {reason}")
+
+
+class FeedbackError(DomainError):
+    """Raised when a salesperson feedback submission cannot be accepted (empty
+    text, invalid category, etc.). Surface as 422 rather than silently dropping
+    the submission.
+    """
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"Feedback submission rejected: {reason}")

@@ -1,16 +1,7 @@
-"""
-Public (unauthenticated) client-facing endpoints for the delivered-proposal
-response flow (week-3 feature).
+from typing import Annotated
+from uuid import UUID
 
-GET  /public/proposals/{proposal_id}        -> meta the client page needs to render (no PII beyond client_name/company)
-POST /public/proposals/{proposal_id}/response -> record accept/decline/feedback (no auth; idempotency on response type)
-
-These intentionally carry no JWT requirement — clients never authenticate into
-this system (CLAUDE.md). The link embedded in the delivery email points here.
-"""
-
-import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -21,82 +12,72 @@ from app.schemas.extended import (
     ClientResponseRequest,
 )
 from app.services.client_response_service import record_client_response
-from app.services.document_service import get_document_artifact
-from app.services.proposal_service import get_proposal_by_id
+from backend.app.services.proposal_service import get_proposal_by_id
 
-# A response is only meaningful once the client has actually been sent
-# something — recording ACCEPTED/DECLINED before DELIVERED would let anyone
-# guessing/holding a proposal UUID register a response to a proposal that was
-# never sent to them.
-_RESPONDABLE_STATUSES = {ProposalStatus.DELIVERED, ProposalStatus.CLOSED}
+
+_RESPONDABLE_STATUSES = {
+    ProposalStatus.DELIVERED,
+    ProposalStatus.CLOSED,
+}
 
 router = APIRouter()
 
 
 @router.get(
-    "/proposals/{proposal_id}",
+    "/public/proposals/{proposal_id}",
     response_model=ClientPageMetaResponse,
-    summary="Public client page meta — renders the 'view your proposal' page (no auth)",
+    summary="Public client page — metadata needed to render the Accept/Decline/Feedback page",
 )
-async def public_proposal_meta(
-    proposal_id: uuid.UUID,
+async def get_client_page_meta(
+    proposal_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> ClientPageMetaResponse:
-    """Return the minimal public-facing info a recipient needs: who the proposal
-    is for, the company, and whether the PDF is ready (with a signed link if so).
-    No salesperson identity, no internal status enum, no activity log.
-    """
-    proposal = await get_proposal_by_id(db, proposal_id)
-    if not proposal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+    """No auth. A client clicks the link in the delivery email and lands here."""
+    proposal = await db.get(Proposal, proposal_id)
 
-    artifact = await get_document_artifact(db, proposal_id)
-    if artifact is not None:
-        from app.adapters.storage_client import get_signed_url
-        try:
-            download_url = await get_signed_url(artifact.storage_path)
-        except Exception:
-            download_url = None
-    else:
-        download_url = None
+    if proposal is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Proposal not found",
+        )
 
     return ClientPageMetaResponse(
-        proposal_id=proposal.id,
-        client_name=proposal.client_name,
+        id=proposal.id,
         company_name=proposal.company_name,
-        document_ready=artifact is not None,
-        document_download_url=download_url,
+        client_name=proposal.client_name,
+        salesperson_name=proposal.salesperson_name or "Your sales team",
+        status=proposal.status,
     )
 
 
 @router.post(
-    "/proposals/{proposal_id}/response",
+    "/public/proposals/{proposal_id}/respond",
     response_model=ClientResponseRecordResponse,
-    summary="Record the recipient's response to a delivered proposal (no auth)",
+    summary="Record the client's Accept / Decline / Feedback decision",
 )
-async def record_public_response(
-    proposal_id: uuid.UUID,
+async def submit_client_response(
+    proposal_id: UUID,
     body: ClientResponseRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    client_ip: str | None = Query(default=None, include_in_schema=False),
 ) -> ClientResponseRecordResponse:
-    """Record the client's accept/decline/feedback. Idempotent per response type
-    per proposal: a second ACCEPTED on the same proposal returns the existing row
-    rather than creating a duplicate.
 
-    The client_ip is best-effort from the requesting layer (FastAPI
-    ``request.client.host`` when available) and is passed through as a query
-    parameter here so this endpoint stays simple and testable.
-    """
     proposal = await get_proposal_by_id(db, proposal_id)
+
     if not proposal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Proposal not found",
+        )
 
     if proposal.status not in _RESPONDABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This proposal has not been delivered yet, so it cannot be responded to.",
         )
+
+    # Get the client's IP address
+    client_ip = request.client.host if request.client else None
 
     record = await record_client_response(
         db,
@@ -106,4 +87,5 @@ async def record_public_response(
         client_ip=client_ip,
         actor=None,
     )
-    return ClientResponseRecordResponse.model_validate(record)
+
+    return record
