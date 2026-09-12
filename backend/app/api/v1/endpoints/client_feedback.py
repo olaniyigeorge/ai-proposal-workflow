@@ -12,7 +12,7 @@ from app.schemas.extended import (
     ClientResponseRequest,
 )
 from app.services.client_response_service import record_client_response
-from backend.app.services.proposal_service import get_proposal_by_id
+from app.services.proposal_service import get_proposal_by_id
 
 
 _RESPONDABLE_STATUSES = {
